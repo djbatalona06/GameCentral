@@ -461,7 +461,7 @@ export class Game {
     this.ui.push("layout-editor", {
       action: (a) => {
         if (a === "reset-layout") {
-          this.settings.controls.touchPositions = {};
+          this.settings.controls.touchPositions[this.touch.orientation()] = {};
           this.settingsChanged();
           return;
         }

@@ -20,6 +20,7 @@ import { Matrix, Quaternion, Vector3, Vector4 } from "@babylonjs/core/Maths/math
 
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { lookDir, type V3 } from "../sim/math";
+import { fovForAspect } from "../sim/player/CameraRig";
 import type { BoxDef, Material as MatName } from "../sim/world/types";
 import type { RuntimeBox } from "../sim/world/World";
 import type { Enemy } from "../sim/ai/Enemy";
@@ -764,13 +765,13 @@ export class SceneRenderer {
     if (sim.cam.rail) {
       cam.position = v(sim.cam.rail.position);
       cam.setTarget(v(sim.cam.rail.target));
-      cam.fov = 0.9;
+      cam.fov = fovForAspect(0.9, this.engine.getAspectRatio(cam));
       return;
     }
     cam.position = v(sim.cam.position).add(jitter);
     const dir = lookDir(sim.cam.yaw, sim.cam.pitch);
     cam.setTarget(cam.position.add(new Vector3(dir.x, dir.y, dir.z)));
-    cam.fov = sim.cam.fov;
+    cam.fov = fovForAspect(sim.cam.fov, this.engine.getAspectRatio(cam));
   }
 
   private dynamicResolution(): void {

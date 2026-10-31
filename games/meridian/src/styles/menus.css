@@ -37,14 +37,14 @@ h2 { font-size: var(--fs-h2); margin: 10px 0 4px; }
 
 .logo {
   font-family: var(--display);
-  font-size: calc(54px * var(--text-scale));
+  font-size: min(calc(54px * var(--text-scale)), 10vw);
   letter-spacing: 0.32em;
   margin: 0;
   padding-left: 0.32em;
   color: var(--accent);
   text-shadow: 0 2px 24px rgba(233, 185, 73, 0.35);
 }
-.logo.small { font-size: calc(34px * var(--text-scale)); }
+.logo.small { font-size: min(calc(34px * var(--text-scale)), 8vw); }
 .tagline { letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink-dim); margin: 0; }
 .screen.title { justify-content: center; }
 .title-art .compass {

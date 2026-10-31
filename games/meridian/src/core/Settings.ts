@@ -9,9 +9,11 @@ export type ColorblindMode = "none" | "protanopia" | "deuteranopia" | "tritanopi
 export type TouchLayout = "standard" | "oneHandedRight" | "oneHandedLeft";
 export type SubtitleSize = "small" | "medium" | "large" | "xl";
 export type Quality = "auto" | "low" | "medium" | "high";
+export type Orientation = "landscape" | "portrait";
+export type TouchPositions = Record<string, { x: number; y: number }>;
 
 export interface Settings {
-  version: 1;
+  version: 2;
   firstRunDone: boolean;
   gameplay: GameplayOptions;
   controls: {
@@ -27,7 +29,8 @@ export interface Settings {
     touchLayout: TouchLayout;
     touchScale: number;
     touchOpacity: number;
-    touchPositions: Record<string, { x: number; y: number }>;
+    /** Custom button positions from the layout editor, kept separately for each orientation. */
+    touchPositions: Record<Orientation, TouchPositions>;
   };
   a11y: {
     subtitles: boolean;
@@ -53,7 +56,7 @@ export interface Settings {
 }
 
 export const defaultSettings = (): Settings => ({
-  version: 1,
+  version: 2,
   firstRunDone: false,
   gameplay: defaultGameplay(),
   controls: {
@@ -69,7 +72,7 @@ export const defaultSettings = (): Settings => ({
     touchLayout: "standard",
     touchScale: 1,
     touchOpacity: 0.55,
-    touchPositions: {},
+    touchPositions: { landscape: {}, portrait: {} },
   },
   a11y: {
     subtitles: true,
@@ -153,6 +156,17 @@ function mergeDefaults<T>(base: T, saved: unknown): T {
   return out as T;
 }
 
+/** Upgrades settings saved by older versions. v1 had one set of touch positions (landscape only). */
+export function migrateSettings(saved: unknown): unknown {
+  const s = structuredClone(saved) as { version?: number; controls?: { touchPositions?: Record<string, unknown> } };
+  if ((s.version ?? 1) < 2) {
+    const old = s.controls?.touchPositions;
+    if (s.controls) s.controls.touchPositions = { landscape: old && !("landscape" in old) ? old : {}, portrait: {} };
+    s.version = 2;
+  }
+  return s;
+}
+
 export class SettingsStore {
   current: Settings = defaultSettings();
   private listeners: Array<(s: Settings) => void> = [];
@@ -161,7 +175,7 @@ export class SettingsStore {
 
   async load(): Promise<Settings> {
     const saved = await this.store.get<unknown>("settings");
-    this.current = saved ? mergeDefaults(defaultSettings(), saved) : defaultSettings();
+    this.current = saved ? mergeDefaults(defaultSettings(), migrateSettings(saved)) : defaultSettings();
     return this.current;
   }
 
