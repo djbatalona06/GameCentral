@@ -1,0 +1,14 @@
+{
+  "name": "Meridian",
+  "short_name": "Meridian",
+  "description": "An original treasure-hunting action-adventure.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0f1418",
+  "theme_color": "#0f1418",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -6,7 +6,7 @@ import { LevelBuilder } from "../world/LevelBuilder";
 import type { ChapterScript } from "../story/types";
 
 export function buildCh03() {
-  const b = new LevelBuilder("ch03", { top: "#6fa86b", bottom: "#d9e6c3", fog: "#a9c9a0", fogDensity: 0.012 });
+  const b = new LevelBuilder("ch03", { top: "#a7c8c4", bottom: "#d9e6c3", fog: "#b4ccb0", fogDensity: 0.012 });
 
   // --- 1. Jungle path (stealth) -----------------------------------------------------------
   b.box([-12, -8, -16], [12, 26, -12], "rock");

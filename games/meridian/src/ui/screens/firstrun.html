@@ -1,0 +1,30 @@
+<section class="screen firstrun" data-screen="firstrun" aria-labelledby="fr-title">
+  <h1 id="fr-title">Before you begin</h1>
+  <p class="lead">Set up Meridian the way you play best. You can change all of this later in Settings.</p>
+  <div class="text-preview" aria-hidden="true">
+    <p class="preview-sample">The tide gives us an hour, maybe less.</p>
+  </div>
+  <label class="row">
+    <span>Text size</span>
+    <input type="range" min="0.8" max="1.6" step="0.05" data-bind="textScale" aria-label="Text size" autofocus>
+  </label>
+  <label class="row">
+    <span>Subtitles</span>
+    <input type="checkbox" data-bind="subtitles" aria-label="Subtitles">
+  </label>
+  <label class="row">
+    <span>Read menus aloud</span>
+    <input type="checkbox" data-bind="menuNarration" aria-label="Read menus aloud">
+  </label>
+  <h2>Quick presets</h2>
+  <div class="preset-grid">
+    <button data-preset="vision"><strong>Vision</strong><small data-desc="vision"></small></button>
+    <button data-preset="hearing"><strong>Hearing</strong><small data-desc="hearing"></small></button>
+    <button data-preset="motor"><strong>Motor</strong><small data-desc="motor"></small></button>
+  </div>
+  <p class="status" data-role="preset-status" aria-live="polite"></p>
+  <div class="actions">
+    <button data-action="more-settings">All accessibility options</button>
+    <button class="primary" data-action="continue">Continue</button>
+  </div>
+</section>

@@ -312,7 +312,7 @@ describe("chapter 3 route", () => {
       }
       simRun(s, 1, frame({ move: [0, 1] }));
       if (p.mode === "hang") {
-        for (let k = 0; k < 10 && p.mode !== "ground"; k++) {
+        for (let k = 0; k < 10 && (p.mode as string) !== "ground"; k++) {
           simRun(s, 1, frame({ pressed: ["jump"], move: [0, 1] }));
           simRun(s, 30, frame({ move: [0, 1] }));
         }
