@@ -77,6 +77,10 @@ export class Game {
     this.settingsStore = new SettingsStore(store);
     await this.settingsStore.load();
     this.saves = new SaveManager(store);
+    // Phones start at a steady 30 fps (cooler, longer battery); players can raise it in Video.
+    if (!this.settings.firstRunDone && TouchControls.isTouchDevice()) this.settings.video.fpsCap = 30;
+    const q = params.get("quality");
+    if (this.debug && q && ["low", "medium", "high", "ultra", "auto"].includes(q)) this.settings.video.quality = q as Settings["video"]["quality"];
 
     const canvas = document.getElementById("game") as HTMLCanvasElement;
     const s = () => this.settings;

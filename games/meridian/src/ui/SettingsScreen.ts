@@ -81,7 +81,7 @@ export const OPTIONS: Option[] = [
   { tab: "audio", label: "Mono audio", desc: "Plays everything in both ears.", type: "toggle", get: (s) => s.audio.mono, set: (s, v) => (s.audio.mono = v as boolean) },
 
   // Video
-  { tab: "video", label: "Quality", desc: "Auto picks a level for your device. Applies on next level load.", type: "select", options: [{ value: "auto", label: "Auto" }, { value: "low", label: "Low (best battery)" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }], get: (s) => s.video.quality, set: (s, v) => (s.video.quality = v as Settings["video"]["quality"]) },
+  { tab: "video", label: "Quality", desc: "Auto picks a level for your device. Applies on next level load.", type: "select", options: [{ value: "auto", label: "Auto" }, { value: "low", label: "Low (best battery)" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }, { value: "ultra", label: "Ultra (desktop)" }], get: (s) => s.video.quality, set: (s, v) => (s.video.quality = v as Settings["video"]["quality"]) },
   { tab: "video", label: "Target frame rate", type: "select", options: [{ value: "30", label: "30 fps (battery saver)" }, { value: "60", label: "60 fps" }], get: (s) => String(s.video.fpsCap), set: (s, v) => (s.video.fpsCap = Number(v) as 30 | 60) },
   { tab: "video", label: "Dynamic resolution", desc: "Lowers resolution briefly to keep the frame rate smooth.", type: "toggle", get: (s) => s.video.dynamicResolution, set: (s, v) => (s.video.dynamicResolution = v as boolean) },
   { tab: "video", label: "Brightness", type: "slider", min: 0.6, max: 1.5, step: 0.05, format: x, get: (s) => s.video.brightness, set: (s, v) => (s.video.brightness = v as number) },

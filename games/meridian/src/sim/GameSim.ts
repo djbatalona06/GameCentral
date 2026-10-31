@@ -659,7 +659,8 @@ export class GameSim {
       autoRecenter: this.opts.autoRecenter,
       invertY: this.opts.invertY,
       fovScale: this.opts.fovScale,
-      hints: this.world.data.camHints,
+      // In the jeep the camera sits further back and a little higher to show the road ahead.
+      hints: this.riding ? [VEHICLE_CAM] : this.world.data.camHints,
     };
   }
 
@@ -1642,6 +1643,8 @@ export class GameSim {
     return this.enemies.some((e) => e.alive && e.state === "combat");
   }
 }
+
+const VEHICLE_CAM = { id: "vehicle", min: { x: -1e9, y: -1e9, z: -1e9 }, max: { x: 1e9, y: 1e9, z: 1e9 }, distance: 7.5, pitch: -0.22 };
 
 function raySphere(o: V3, d: V3, c: V3, r: number): number | null {
   const oc = sub(o, c);

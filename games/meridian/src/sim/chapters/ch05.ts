@@ -7,7 +7,7 @@ import { LevelBuilder } from "../world/LevelBuilder";
 import type { ChapterScript } from "../story/types";
 
 export function buildCh05() {
-  const b = new LevelBuilder("ch05", { top: "#9fb2c4", bottom: "#e9eef2", fog: "#cfd8e0", fogDensity: 0.014 }, -40);
+  const b = new LevelBuilder("ch05", { top: "#7f97ad", bottom: "#d5dde4", fog: "#b7c3cd", fogDensity: 0.011 }, -40);
 
   b.weather("snow", "snow", [-32, -2, -16], [32, 70, 290], { wind: [0.25, 0, 0] });
 

@@ -286,7 +286,7 @@ export class LevelBuilder {
   }
 
   weather(id: string, kind: WeatherDef["kind"], min: Vec, max: Vec, opts: Partial<Pick<WeatherDef, "sightScale" | "noiseScale" | "fog" | "startActive">> & { wind?: Vec } = {}): this {
-    const preset = { sandstorm: { sightScale: 0.35, noiseScale: 0.5, fog: 0.06 }, snow: { sightScale: 0.7, noiseScale: 0.6, fog: 0.025 }, rain: { sightScale: 0.8, noiseScale: 0.5, fog: 0.015 } }[kind];
+    const preset = { sandstorm: { sightScale: 0.35, noiseScale: 0.5, fog: 0.06 }, snow: { sightScale: 0.7, noiseScale: 0.6, fog: 0.01 }, rain: { sightScale: 0.8, noiseScale: 0.5, fog: 0.015 } }[kind];
     this.data.weather.push({ id, kind, min: v(min), max: v(max), ...preset, wind: v(opts.wind ?? [0, 0, 0]), startActive: opts.startActive ?? true });
     const w = this.data.weather[this.data.weather.length - 1];
     if (opts.sightScale !== undefined) w.sightScale = opts.sightScale;

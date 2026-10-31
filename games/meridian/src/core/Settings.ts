@@ -8,7 +8,7 @@ import type { KeyValueStore } from "../save/storage";
 export type ColorblindMode = "none" | "protanopia" | "deuteranopia" | "tritanopia";
 export type TouchLayout = "standard" | "oneHandedRight" | "oneHandedLeft";
 export type SubtitleSize = "small" | "medium" | "large" | "xl";
-export type Quality = "auto" | "low" | "medium" | "high";
+export type Quality = "auto" | "low" | "medium" | "high" | "ultra";
 export type Orientation = "landscape" | "portrait";
 export type TouchPositions = Record<string, { x: number; y: number }>;
 
