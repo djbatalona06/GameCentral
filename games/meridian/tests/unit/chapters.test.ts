@@ -6,6 +6,7 @@ import { GameSim, defaultGameplay } from "../../src/sim/GameSim";
 import type { ChapterDef } from "../../src/sim/story/types";
 import { DT, frame, run } from "./helpers";
 import type { InputFrame } from "../../src/input/actions";
+import { trackAt, vehicleBox } from "../../src/sim/vehicle/Vehicle";
 
 const playable = CHAPTERS.filter((c) => c.playable);
 const byId = (id: string) => CHAPTERS.find((c) => c.id === id)!;
@@ -46,8 +47,8 @@ describe("chapter registry", () => {
     expect(totalStoryMinutes()).toBeGreaterThanOrEqual(25 * 60);
   });
 
-  it("chapters 1 to 3 are playable", () => {
-    expect(playable.map((c) => c.id)).toEqual(["ch01", "ch02", "ch03"]);
+  it("all of Act I (chapters 1 to 7) is playable", () => {
+    expect(playable.map((c) => c.id)).toEqual(["ch01", "ch02", "ch03", "ch04", "ch05", "ch06", "ch07"]);
   });
 });
 
@@ -65,7 +66,9 @@ describe.each(playable.map((c) => [c.id, c] as const))("%s level integrity", (_i
   });
 
   it("every trigger and interact event has a script handler", () => {
-    const puzzleInteracts = new Set(script.puzzles.flatMap((p) => (p.type === "pillars" ? p.pillars : p.type === "sequence" ? p.levers : [])));
+    const puzzleInteracts = new Set(
+      script.puzzles.flatMap((p) => (p.type === "pillars" ? p.pillars : p.type === "sequence" ? p.levers : p.type === "bells" ? [...p.bells, p.listen] : [])),
+    );
     for (const t of level.triggers) expect(script.events[t.event], `trigger ${t.event}`).toBeDefined();
     for (const i of level.interacts) {
       if (puzzleInteracts.has(i.id)) continue;
@@ -84,6 +87,12 @@ describe.each(playable.map((c) => [c.id, c] as const))("%s level integrity", (_i
       if (a.type === "remove" || a.type === "reveal") expect(groups.has(a.group), a.group).toBe(true);
       if (a.type === "journal") expect(journal.has(a.id), a.id).toBe(true);
       if (a.type === "checkpoint") expect(level.checkpoints.some((c) => c.id === a.id), a.id).toBe(true);
+      if (a.type === "hazard") expect(level.hazards.some((h) => h.id === a.id), a.id).toBe(true);
+      if (a.type === "weather") expect(level.weather.some((w) => w.id === a.id), a.id).toBe(true);
+      if (a.type === "searchlight") expect(level.searchlights.some((l) => l.id === a.id), a.id).toBe(true);
+      if (a.type === "mover") expect(level.movers.some((m) => m.id === a.id), a.id).toBe(true);
+      if (a.type === "vehicle") expect(level.tracks.some((t) => t.id === a.track), a.track).toBe(true);
+      if (a.type === "pursuit") expect(level.pursuers.some((p) => p.group === a.group), a.group).toBe(true);
     }
     expect(all.some((a) => a.type === "complete")).toBe(true);
   });
@@ -333,5 +342,209 @@ describe("chapter 3 route", () => {
     simRun(s, 10, frame());
     expect(s.puzzles.find((p) => p.def.id === "plates")!.solved).toBe(true);
     expect(s.world.boxes.find((b) => b.group === "vaultdoor")!.removed).toBe(true);
+  });
+});
+
+describe("chapter 4 route", () => {
+  const ch = byId("ch04");
+
+  /** A tiny autopilot: full throttle, steering toward the nearest lane with no rocks ahead. */
+  function drive(s: GameSim, maxFrames: number) {
+    for (let i = 0; i < maxFrames && s.riding; i++) {
+      const v = s.vehicle!;
+      const half = v.track.def.width / 2 - 1;
+      const blocked = (lat: number) => {
+        for (let d = 0; d <= 22; d += 2) {
+          const at = trackAt(v.track, v.s + d);
+          const pos = { x: at.pos.x + at.right.x * lat, y: at.pos.y, z: at.pos.z + at.right.z * lat };
+          if (s.world.overlapsSolid(vehicleBox(pos))) return true;
+        }
+        return false;
+      };
+      let target = v.lateral;
+      if (blocked(v.lateral)) {
+        const lanes = [];
+        for (let l = -half; l <= half; l += 0.5) lanes.push(l);
+        lanes.sort((a, b) => Math.abs(a - v.lateral) - Math.abs(b - v.lateral));
+        target = lanes.find((l) => !blocked(l)) ?? v.lateral;
+      }
+      const steer = Math.max(-1, Math.min(1, (target - v.lateral) * 2));
+      s.step(DT, frame({ move: [steer, v.track.def.mode === "drive" ? 1 : 0] }));
+    }
+  }
+
+  it("gets in the jeep and drives the whole chase without wrecking", () => {
+    const s = sim(ch, [0, 0, 58]);
+    simRun(s, 2, frame());
+    expect(s.prompt?.label).toBe("Get in the jeep");
+    simRun(s, 1, frame({ pressed: ["interact"] }));
+    simRun(s, 60 * 4, frame({ pressed: ["jump"] })); // skip through the cutscene
+    expect(s.riding).toBe(true);
+    drive(s, 60 * 60);
+    // Part one ends with Bram taking the wheel: part two (gunner) starts automatically.
+    expect(s.vehicle!.track.def.id).toBe("road2");
+    expect(s.dead).toBe(false);
+    drive(s, 60 * 60);
+    expect(s.riding).toBe(false);
+    expect(s.checkpointId).toBe("c3");
+    expect(s.weather?.kind).toBe("sandstorm");
+  });
+
+  it("the lanes really are blocked: driving straight down the middle crashes", () => {
+    const s = sim(ch, [0, 0, 58]);
+    simRun(s, 2, frame());
+    simRun(s, 1, frame({ pressed: ["interact"] }));
+    simRun(s, 60 * 4, frame({ pressed: ["jump"] }));
+    simRun(s, 60 * 12, frame({ move: [0, 1] }));
+    expect(s.vehicle!.hp).toBeLessThan(100);
+  });
+
+  it("climbs the waystation tower", () => {
+    const { world, p } = at(ch, [-2, 0, 789.4]);
+    run(p, world, 1, frame({ pressed: ["jump"], move: [0, 1] }));
+    for (let i = 0; i < 60 && p.mode !== "hang"; i++) run(p, world, 1, frame({ move: [0, 1] }));
+    expect(p.mode).toBe("hang");
+    climbToTop(p, world, 0);
+    expect(p.pos.y).toBeCloseTo(10, 1);
+  });
+
+  it("the sun levers raise the bridge to the shrine", () => {
+    const s = sim(ch, [0, 10, 800]);
+    for (const id of ["lv_dawn", "lv_noon", "lv_dusk"]) {
+      const i = s.world.data.interacts.find((x) => x.id === id)!;
+      s.player.teleport({ x: i.pos.x, y: 10, z: i.pos.z - 0.8 }, 0);
+      simRun(s, 2, frame());
+      simRun(s, 1, frame({ pressed: ["interact"] }));
+    }
+    expect(s.puzzles[0].solved).toBe(true);
+    expect(s.world.boxes.find((b) => b.group === "wsbridge")!.removed).toBe(false);
+  });
+});
+
+describe("chapter 5 route", () => {
+  const ch = byId("ch05");
+
+  it("climbs the monastery cliff", () => {
+    const { world, p } = at(ch, [3, 0, 71.4]);
+    run(p, world, 1, frame({ pressed: ["jump"], move: [0, 1] }));
+    for (let i = 0; i < 60 && p.mode !== "hang"; i++) run(p, world, 1, frame({ move: [0, 1] }));
+    expect(p.mode).toBe("hang");
+    climbToTop(p, world, 0, 80);
+    expect(p.pos.y).toBeCloseTo(18, 1);
+  });
+
+  it("ringing the hymn opens the north gate", () => {
+    const s = sim(ch, [0, 30, 143]);
+    for (const id of ["bell0", "bell2", "bell1", "bell3"]) {
+      const i = s.world.data.interacts.find((x) => x.id === id)!;
+      s.player.teleport({ x: i.pos.x, y: 30, z: i.pos.z - 0.7 }, 0);
+      simRun(s, 2, frame());
+      simRun(s, 1, frame({ pressed: ["interact"] }));
+    }
+    expect(s.puzzles[0].solved).toBe(true);
+    expect(s.world.boxes.find((b) => b.group === "northgate")!.removed).toBe(true);
+    expect(s.events.filter((e) => e.type === "bell").length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("outruns the avalanche to the ice cave", () => {
+    const s = new GameSim(ch, { ...defaultGameplay() });
+    s.player.teleport({ x: 0, y: 18, z: 184 }, 0);
+    s.cam.yaw = 0;
+    simRun(s, 60 * 22, frame({ move: [0, 1], held: ["sprint"] }));
+    expect(s.dead).toBe(false);
+    expect(s.player.pos.z).toBeGreaterThan(274);
+    expect(s.hazards[0].active).toBe(false);
+  });
+
+  it("standing still on the slope gets you caught by the avalanche", () => {
+    const s = new GameSim(ch, { ...defaultGameplay() });
+    s.player.teleport({ x: 0, y: 18, z: 187 }, 0);
+    simRun(s, 60 * 6, frame());
+    expect(s.dead).toBe(true);
+  });
+});
+
+describe("chapter 6 route", () => {
+  const ch = byId("ch06");
+
+  it("crouching on the roof survives the first tunnel; standing does not", () => {
+    for (const crouch of [true, false]) {
+      const s = new GameSim(ch, { ...defaultGameplay() });
+      s.player.teleport({ x: 0, y: 4, z: 15.5 }, 0);
+      if (crouch) simRun(s, 1, frame({ pressed: ["crouch"] }));
+      simRun(s, 60 * 12, frame());
+      expect(s.dead, crouch ? "crouched" : "standing").toBe(!crouch);
+    }
+  });
+
+  it("falling off the side of the train is fatal", () => {
+    const s = new GameSim(ch, { ...defaultGameplay() });
+    s.player.teleport({ x: 3.4, y: 4, z: 20 }, 0);
+    simRun(s, 60, frame());
+    expect(s.dead).toBe(true);
+  });
+
+  it("climbs from a flatcar onto the next boxcar roof", () => {
+    const { world, p } = at(ch, [0, 1.4, 10.9]);
+    run(p, world, 1, frame({ pressed: ["jump"], move: [0, 1] }));
+    for (let i = 0; i < 60 && p.mode !== "hang"; i++) run(p, world, 1, frame({ move: [0, 1] }));
+    expect(p.mode).toBe("hang");
+    climbToTop(p, world, 0);
+    expect(p.pos.y).toBeCloseTo(4, 1);
+  });
+
+  it("working the cab controls in order stops the train", () => {
+    const s = sim(ch, [0, 1.4, 144]);
+    for (const id of ["v_steam", "v_brake", "v_coupler"]) {
+      const i = s.world.data.interacts.find((x) => x.id === id)!;
+      s.player.teleport({ x: i.pos.x * 0.6, y: 1.4, z: i.pos.z - 0.6 }, 0);
+      simRun(s, 2, frame());
+      simRun(s, 1, frame({ pressed: ["interact"] }));
+    }
+    expect(s.puzzles[0].solved).toBe(true);
+    expect(s.firedEvents).toContain("stopped");
+  });
+});
+
+describe("chapter 7 route", () => {
+  const ch = byId("ch07");
+
+  it("cutting a panel switches its searchlight off", () => {
+    const s = sim(ch, [-14.4, 0, 32.4]);
+    simRun(s, 2, frame());
+    expect(s.prompt?.label).toBe("Cut the searchlight's power");
+    simRun(s, 1, frame({ pressed: ["interact"] }));
+    expect(s.searchlights.find((l) => l.def.id === "sl1")!.active).toBe(false);
+  });
+
+  it("the swinging container carries you, and the lift container raises you to the far quay", () => {
+    const s = sim(ch);
+    const ct1 = s.world.boxes.find((b) => b.group === "ct1")!;
+    s.player.teleport({ x: (ct1.min.x + ct1.max.x) / 2, y: 0.6, z: 88 }, 0);
+    const x0 = s.player.pos.x;
+    simRun(s, 120, frame());
+    expect(Math.abs(s.player.pos.x - x0)).toBeGreaterThan(1);
+    expect(s.player.pos.y).toBeCloseTo(0.6, 1);
+
+    const ct3 = s.world.boxes.find((b) => b.group === "ct3")!;
+    s.player.teleport({ x: 0, y: ct3.max.y, z: 103 }, 0);
+    let top = 0;
+    for (let i = 0; i < 60 * 8; i++) {
+      simRun(s, 1, frame());
+      top = Math.max(top, s.player.pos.y);
+    }
+    expect(top).toBeCloseTo(3.1, 1);
+  });
+
+  it("resetting the fuses in the diagram's order opens the harbour gate", () => {
+    const s = sim(ch, [9.4, 0, 74]);
+    for (const id of ["fuse_b", "fuse_r", "fuse_y"]) {
+      const i = s.world.data.interacts.find((x) => x.id === id)!;
+      s.player.teleport({ x: 9.6, y: 0, z: i.pos.z }, Math.PI / 2);
+      simRun(s, 2, frame());
+      simRun(s, 1, frame({ pressed: ["interact"] }));
+    }
+    expect(s.puzzles[0].solved).toBe(true);
+    expect(s.world.boxes.find((b) => b.group === "yardgate")!.removed).toBe(true);
   });
 });

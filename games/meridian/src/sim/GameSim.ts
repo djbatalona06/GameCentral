@@ -266,6 +266,8 @@ export class GameSim {
     this.world = new World(chapter.build());
     const d = this.world.data;
     this.movers = d.movers.map(newMover);
+    // A mover whose path doesn't start at its built position jumps there first.
+    for (const m of this.movers) if (m.offset.x || m.offset.y || m.offset.z) this.world.translateGroup(m.def.group, m.offset);
     this.hazards = d.hazards.map(newHazard);
     this.searchlights = d.searchlights.map(newSearchlight);
     for (const w of d.weather) if (w.startActive) this.weatherOn.add(w.id);
@@ -1469,6 +1471,14 @@ export class GameSim {
     for (const h of this.hazards) {
       if (stepHazard(h, dt) && h.def.warn) this.emit({ type: "warning", text: h.def.warn });
       const box = hazardBox(h);
+      // A tunnel or avalanche also sweeps away any enemy standing in its path.
+      if (box && !isFinite(h.def.damage) && h.def.kind !== "kill") {
+        for (const e of this.enemies) {
+          if (!e.alive || !overlaps(e.body(), box)) continue;
+          e.damage(99999, e.pos, true);
+          this.onEnemyKilled(e, false);
+        }
+      }
       if (!box || !overlaps(body, box)) {
         h.contact = 0;
         continue;

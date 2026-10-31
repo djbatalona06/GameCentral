@@ -17,41 +17,43 @@ In 1574, navigator **Catalina de Ordaz** sailed away from Qasr Amal with "cargo:
 ## Structure: 3 acts, 22 chapters, ~25 hours (main path)
 Playtime estimates are for a first playthrough with some exploration. Collectibles (5 treasures per chapter), medals, harder difficulties and New Game+ add replay time beyond 25 hours.
 
-### Act I — The Drowned Route (Chapters 1–7, ~5.9 h)
+### Act I — The Drowned Route (Chapters 1–7, ~3.2 h) ✅ fully playable
 | # | Chapter | Setting | Gameplay focus | Est. |
 |---|---|---|---|---|
 | 1 | **Breakwater** ✅ playable | Reef wreck and sea cliffs | Movement, swimming, climbing, rope, beam, first stealth and combat, zipline | 22 min |
 | 2 | **Qasr Amal** ✅ playable | Harbour market city | Stealth with distractions, crate puzzle, rooftop jumps, sniper, awning collapse, market shootout, lever puzzle | 25 min |
 | 3 | **The Green Vault** ✅ playable | Jungle temple | Grass stealth, wall jumps, free climb, pillar puzzle, collapsing bridge, grapple, boss (Kessa), plates puzzle | 28 min |
-| 4 | Salt Road | Caravan route | Vehicle chase, sandstorm ambush with low visibility | 70 min |
-| 5 | Bell of Saint Aurel | Mountain monastery | Vertical climbing, bell-tower puzzle, snow stealth | 75 min |
-| 6 | Night Train to Varanask | Mountain railway | Fighting along a moving train, tunnels, Kessa rematch | 70 min |
-| 7 | Ironwood Docks | Shipyard | Infiltration and Varek's plan revealed | 65 min |
+| 4 | **Salt Road** ✅ playable | Caravan route | Camp stealth in scrub, jeep chase (drive, then gunner), sandstorm ambush, tower climb, sun-lever puzzle | 30 min |
+| 5 | **Bell of Saint Aurel** ✅ playable | Mountain monastery | Snow stealth, 18 m cliff climb, courtyard fight, captioned bell puzzle, zipline, avalanche escape | 30 min |
+| 6 | **Night Train to Varanask** ✅ playable | Mountain railway | Car-to-car traversal, crouch under tunnels, flatcar fights, Kessa rematch, stop-the-engine puzzle | 28 min |
+| 7 | **Ironwood Docks** ✅ playable | Shipyard | Searchlight stealth, power-panel sabotage, fuse puzzle, swinging crane containers, ship-deck fight, Varek's plan revealed | 30 min |
 
-### Act II — The Meridian (Chapters 8–15, ~10 h)
+### Act II — The Meridian (Chapters 8–15, ~11.5 h)
 | # | Chapter | Setting | Focus | Est. |
 |---|---|---|---|---|
-| 8 | The Ice Archive | Arctic station | Survival, ice climbing, blizzard | 85 min |
-| 9 | The Cartographer's House | Hill city mansion | Heist, social stealth | 70 min |
-| 10 | Monsoon City | Flooded metropolis | Boat traversal, rooftop gardens | 75 min |
-| 11 | The Sunken Cathedral | Underwater ruins | Diving, air management, second key | 85 min |
-| 12 | Halvard Rock | Island prison | Bram's betrayal, prison escape | 70 min |
-| 13 | Ashfall Pass | Volcano | Solo traversal under lava rain | 75 min |
-| 14 | The Glass Desert | Glass dunes | Open area, proof of Meridia | 70 min |
-| 15 | Bram's Debt | Smuggler's haven | Reunion, team-up firefight | 70 min |
+| 8 | The Ice Archive | Arctic station | Survival, ice climbing, blizzard | 96 min |
+| 9 | The Cartographer's House | Hill city mansion | Heist, social stealth | 81 min |
+| 10 | Monsoon City | Flooded metropolis | Boat traversal, rooftop gardens | 86 min |
+| 11 | The Sunken Cathedral | Underwater ruins | Diving, air management, second key | 96 min |
+| 12 | Halvard Rock | Island prison | Bram's betrayal, prison escape | 81 min |
+| 13 | Ashfall Pass | Volcano | Solo traversal under lava rain | 86 min |
+| 14 | The Glass Desert | Glass dunes | Open area, proof of Meridia | 81 min |
+| 15 | Bram's Debt | Smuggler's haven | Reunion, team-up firefight | 81 min |
 
-### Act III — The Drowned City (Chapters 16–22, ~9.1 h)
+### Act III — The Drowned City (Chapters 16–22, ~10.3 h)
 | # | Chapter | Setting | Focus | Est. |
 |---|---|---|---|---|
-| 16 | Storm Passage | Open sea | Ship battle in a storm | 75 min |
-| 17 | Isle of Lanterns | Hidden island | Exploration, Catalina's crew | 85 min |
-| 18 | The Ordaz Lighthouse | Cliff lighthouse | Third key; Kessa's last stand | 70 min |
-| 19 | Undertow | Sea caves | Flooding escape set piece | 65 min |
-| 20 | Meridia | The Drowned City | Puzzle city at low tide | 110 min |
-| 21 | Heart of the Codex | Inner sanctum | Final confrontation with Varek | 100 min |
-| 22 | True North | Breakwater, a year later | Epilogue and choice | 40 min |
+| 16 | Storm Passage | Open sea | Ship battle in a storm | 86 min |
+| 17 | Isle of Lanterns | Hidden island | Exploration, Catalina's crew | 96 min |
+| 18 | The Ordaz Lighthouse | Cliff lighthouse | Third key; Kessa's last stand | 81 min |
+| 19 | Undertow | Sea caves | Flooding escape set piece | 76 min |
+| 20 | Meridia | The Drowned City | Puzzle city at low tide | 121 min |
+| 21 | Heart of the Codex | Inner sanctum | Final confrontation with Varek | 111 min |
+| 22 | True North | Breakwater, a year later | Epilogue and choice | 48 min |
 
 **Total main story: ~1,500 minutes (25 hours).** The registry test (`tests/unit/chapters.test.ts`) checks this.
+
+Act I came out shorter than first planned once it was built (Ch4–7 play in about 30 minutes each, not 65–75), so those minutes moved to the Act II and III targets. The 25-hour total is still a target for the full release: right now about 3.2 hours of story are playable.
 
 ## Themes
 - What do we owe the people who hid things for a reason?

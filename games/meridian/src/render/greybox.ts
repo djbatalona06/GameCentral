@@ -17,6 +17,7 @@ export const MATERIAL_COLORS: Record<Material, string> = {
   metal: "#6d7983",
   plaster: "#dfcdae",
   foliage: "#4f7b3b",
+  snow: "#e8eef2",
 };
 
 export const HIGH_CONTRAST_ENV = "#3a3a3a";

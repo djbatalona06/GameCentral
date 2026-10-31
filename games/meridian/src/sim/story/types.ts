@@ -50,8 +50,12 @@ export type Action =
   | { type: "pursuit"; group: string }
   | { type: "complete" };
 
-/** Actions that change the world and must be replayed when restoring a checkpoint. */
-export const WORLD_ACTIONS: Action["type"][] = ["remove", "reveal", "revealInteract", "objective", "spawn", "give", "music", "mover", "hazard", "weather", "searchlight"];
+/**
+ * Actions that change the world and must be replayed when restoring a checkpoint.
+ * Hazards are left out on purpose: a sweep (a tunnel, an avalanche) is a moment, not a state,
+ * and replaying it would start it again on top of the player.
+ */
+export const WORLD_ACTIONS: Action["type"][] = ["remove", "reveal", "revealInteract", "objective", "spawn", "give", "music", "mover", "weather", "searchlight"];
 
 export type PuzzleDef =
   | { id: string; type: "pillars"; pillars: string[]; solution: number[]; initial: number[]; onSolve: string; hint: string }

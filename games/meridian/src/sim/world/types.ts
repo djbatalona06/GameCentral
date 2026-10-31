@@ -5,7 +5,7 @@ import type { V3 } from "../math";
 import type { ArchetypeId } from "../ai/archetypes";
 import type { WeaponId } from "../combat/weapons";
 
-export type Material = "ground" | "sand" | "rock" | "stone" | "wood" | "metal" | "plaster" | "foliage";
+export type Material = "ground" | "sand" | "rock" | "stone" | "wood" | "metal" | "plaster" | "foliage" | "snow";
 
 export interface BoxDef {
   id: string;

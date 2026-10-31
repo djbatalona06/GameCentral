@@ -302,6 +302,12 @@ export class LevelBuilder {
     return this;
   }
 
+  /** Scenery streams past at this speed (metres per second); used for the moving train. */
+  scroll(speed: number): this {
+    this.data.scroll = { speed };
+    return this;
+  }
+
   build(): LevelData {
     return this.data;
   }
