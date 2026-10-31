@@ -1,6 +1,6 @@
 # GameCentral
 
-A home for original games.
+Home to multiple games including Duck Hunt, Heartbeat, and Uncharted mobile (not sponsored)
 
 | Game | What it is | Folder |
 |---|---|---|
