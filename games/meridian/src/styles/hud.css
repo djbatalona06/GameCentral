@@ -260,6 +260,9 @@ body.touch.layout-oneHandedLeft .prompt { left: 70%; }
   body.touch.layout-oneHandedLeft .hud:not(.cinematic) .subtitles { left: 50%; right: auto; transform: translateX(-50%); width: calc(100vw - 32px); text-align: center; bottom: 60%; }
   body.touch .hud .tutorial,
   body.touch.layout-oneHandedLeft .hud .tutorial { left: 50%; right: auto; transform: translateX(-50%); width: calc(100vw - 32px); top: max(120px, calc(env(safe-area-inset-top) + 112px)); text-align: center; }
+  /* Two-thumb layout: the left of the screen above the stick is free, so subtitles go there
+     and never cover the tutorial card. */
+  body.touch.layout-standard .hud:not(.cinematic) .subtitles { left: max(12px, env(safe-area-inset-left)); transform: none; width: 60vw; text-align: left; bottom: 26%; }
   .cinematic .letterbox { height: 18vh; }
   .cinematic .subtitles { bottom: 20vh; }
 }

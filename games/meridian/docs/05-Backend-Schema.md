@@ -58,7 +58,9 @@ LevelData {
   boxes (solid, optional cover/ledges/group/hp/explosive/wallJump), ramps, ledges, climbWalls,
   ropes (grapple?), ziplines, beams, water, grass, crates, pickups, collectibles,
   interacts (lever/door/examine/pillar/plate), triggers, checkpoints, enemies (archetype, arena, patrol, wave),
-  arenas (nav-grid bounds), camHints, killY
+  arenas (nav-grid bounds), camHints, killY,
+  movers (group + path), hazards (sweeping/static kill boxes), tracks + pursuers (vehicle chase),
+  weather volumes, searchlights, scroll (visual scenery speed)
 }
 
 ChapterScript {
@@ -66,9 +68,15 @@ ChapterScript {
 }
 
 Action = dialogue | objective | spawn | remove | reveal | revealInteract | journal | cutscene
-       | emit (delayed event) | tutorial | music | shake | give | stealth | checkpoint | complete
+       | emit (delayed event) | tutorial | music | shake | give | stealth | checkpoint
+       | mover | hazard | weather | searchlight (switch on/off) | vehicle (enter a track) | pursuit (spawn enemy jeeps)
+       | complete
 ```
-Event names come from triggers, interactables, puzzles (`onSolve`), wave clears (`waveClear:<wave>`, `arenaClear:<arena>`) and boss phases (`bossPhase:2`).
+Event names come from triggers, interactables, puzzles (`onSolve`), wave clears (`waveClear:<wave>`, `arenaClear:<arena>`), boss phases (`bossPhase:2`), cleared chases (`pursuitClear:<group>`) and searchlight alarms (`searchlightAlarm:<id>`). Puzzle types: pillars, sequence, plates, bells.
+
+On checkpoint restore, world-changing actions are replayed. Hazards are deliberately **not** replayed (a tunnel sweep is a moment, not a state).
 
 ## Settings
-`gameplay` (difficulty and sliders, assists), `controls` (key/pad bindings, toggles, sensitivity, gyro, vibration, touch layout/size/opacity/positions), `a11y` (subtitles, colour-blind mode, contrast, text size, motion, narration, indicators), `audio` (5 volumes, mono), `video` (quality, fps cap, dynamic resolution, brightness, fps counter).
+`gameplay` (difficulty and sliders, assists), `controls` (key/pad bindings, toggles, sensitivity, gyro, vibration, touch layout/size/opacity/positions), `a11y` (subtitles, colour-blind mode, contrast, text size, motion, narration, indicators), `audio` (6 volumes incl. world sounds, mono, ducking, night mode), `video` (quality low/medium/high/ultra, fps cap — 30 by default on phones, dynamic resolution, brightness, fps counter).
+
+Settings version 2 stores touch button positions per orientation: `controls.touchPositions = { landscape: {...}, portrait: {...} }`. `migrateSettings()` moves a v1 single set into `landscape`. New fields added later are filled from defaults automatically (`mergeDefaults`).

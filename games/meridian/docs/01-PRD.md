@@ -17,14 +17,16 @@ Ines Calder, a salvage diver turned relic hunter, follows the 400-year-old route
 No names, characters, locations, story beats or assets come from any existing game series. Treasure hunting, climbing and cover shooting are shared genre conventions.
 
 ## Goals for this build
-1. Ship every core system the full game needs, as a playable mobile web app.
-2. Ship chapters 1–3 (about 75 minutes with exploration), fully playable start to finish.
+1. Ship every core system the full game needs, as a playable mobile web app **and** as Android/iOS store apps (Capacitor).
+2. Ship **Act I: chapters 1–7** (about 3.2 hours with exploration), fully playable start to finish, in portrait or landscape.
+2b. A realistic look that holds 30 fps on a 2021 mid-range phone, and a full synthesised audio pass.
 3. Outline all 22 chapters (about 25 hours) so future chapters are content work, not engine work.
 4. Meet AAA accessibility expectations from day one.
 
 ## Non-goals (this build)
-- Final art, voice acting and music. The look is deliberately greybox: simple shapes and colours.
-- Chapters 4–22 as playable levels. They are outlined and shown as "coming soon".
+- Scanned/hand-made models and voice acting. The look and sound are procedural; real models drop in through asset slots later.
+- Chapters 8–22 as playable levels. They are outlined and shown as "coming soon".
+- Publishing to the stores (needs the owner's developer accounts; steps in `store-release.md`).
 - Multiplayer, in-app purchases, accounts or online services.
 
 ## Core features (must have)

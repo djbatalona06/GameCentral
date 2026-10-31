@@ -32,6 +32,8 @@ Boot
 - Focus always starts on the screen's main action, and is outlined in high-visibility yellow.
 - With narration on, every focused item is read aloud ("Subtitles, on").
 - Pausing happens automatically when the app goes to the background or the mouse is released.
+- In the Android app, the hardware **Back** button acts as Back in menus and as Pause during play.
+- Rotating the phone at any time re-lays out the HUD and touch controls for the new orientation; held buttons are released so nothing gets stuck.
 
 ## In-game flow of a chapter
 1. The chapter loads its level and runs its start script (music, objective, intro dialogue, first tutorial).
@@ -42,4 +44,6 @@ Boot
 
 ## Debug and test entry points
 - `?chapter=2` starts chapter 2 directly.
-- `?debug=1` exposes `window.__meridian` for automated tests.
+- `?debug=1` exposes `window.__meridian` for automated tests, and `__meridian.renderer.stats()` (draw calls, triangles, tier).
+- `?debug&quality=low|medium|high|ultra` forces a quality tier.
+- Chapters 1–7 can all be opened directly with `?chapter=N`.
