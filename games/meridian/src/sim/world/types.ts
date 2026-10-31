@@ -103,7 +103,7 @@ export interface CollectibleDef {
   description: string;
 }
 
-export type InteractKind = "lever" | "door" | "examine" | "pillar" | "plate" | "valve";
+export type InteractKind = "lever" | "door" | "examine" | "pillar" | "plate" | "valve" | "bell" | "panel" | "vehicle";
 
 export interface InteractDef {
   id: string;
@@ -159,6 +159,103 @@ export interface CamHintDef {
   distance?: number;
 }
 
+/**
+ * A group of boxes and ledges that moves along a path (crane containers, lifts).
+ * Anyone standing on it or hanging from it is carried along.
+ */
+export interface MoverDef {
+  id: string;
+  group: string;
+  /** Offsets from the starting position, visited in order. The first is usually {0,0,0}. */
+  path: V3[];
+  speed: number;
+  mode: "loop" | "pingpong" | "once";
+  /** Seconds to wait at each path point. */
+  pause: number;
+  startActive: boolean;
+}
+
+/**
+ * A box that hurts or kills the player while it overlaps them. It can sweep along a direction
+ * (a tunnel mouth rushing over a train roof, an avalanche) and repeat. Standing still on a
+ * static one is fatal (falling off the train).
+ */
+export interface HazardDef {
+  id: string;
+  kind: "tunnel" | "avalanche" | "kill" | "fire";
+  min: V3;
+  max: V3;
+  /** Metres per second. Zero for a static kill zone. */
+  vel: V3;
+  /** Distance travelled before the sweep ends. */
+  travel: number;
+  /** Seconds between sweeps (0 = only once). */
+  every: number;
+  /** Damage per second; Infinity kills on contact. */
+  damage: number;
+  startActive: boolean;
+  /** Text shown (and spoken) when a sweep starts, e.g. "Tunnel! Get down!". */
+  warn?: string;
+}
+
+/** The road for a vehicle chase: a centre line the jeep follows, with room to steer either side. */
+export interface TrackDef {
+  id: string;
+  points: V3[];
+  /** Total drivable width in metres. */
+  width: number;
+  /** "drive": the player steers. "gunner": Bram drives and the player shoots. */
+  mode: "drive" | "gunner";
+  /** Speed Bram holds in gunner mode, or the top speed when driving. */
+  speed: number;
+  /** Story event fired when the jeep reaches the end of the track. */
+  onEnd: string;
+}
+
+/** An enemy jeep that chases the player along a track, with a gunner on the back. */
+export interface PursuerDef {
+  id: string;
+  track: string;
+  /** Which spawn call brings this jeep in. */
+  group: string;
+  /** How far behind (negative) or ahead (positive) of the player it tries to stay. */
+  gap: number;
+  lateral: number;
+  hp: number;
+}
+
+/** Weather inside a volume: fog, reduced enemy sight, muffled footsteps and wind. */
+export interface WeatherDef {
+  id: string;
+  kind: "sandstorm" | "snow" | "rain";
+  min: V3;
+  max: V3;
+  /** Multiplier on how far enemies can see. */
+  sightScale: number;
+  /** Multiplier on how far the player's footsteps carry. */
+  noiseScale: number;
+  /** Extra fog density for the renderer. */
+  fog: number;
+  /** Sideways push in metres per second. */
+  wind: V3;
+  startActive: boolean;
+}
+
+/** A sweeping searchlight. Standing in its beam for too long raises the alarm in its arena. */
+export interface SearchlightDef {
+  id: string;
+  pos: V3;
+  /** Centre of the sweep and how far either side it turns (radians). */
+  yaw: number;
+  sweep: number;
+  /** Seconds for one full sweep back and forth. */
+  period: number;
+  range: number;
+  /** Half-width of the beam (radians). */
+  cone: number;
+  arena: string;
+}
+
 export interface LevelData {
   id: string;
   sky: { top: string; bottom: string; fog: string; fogDensity: number };
@@ -180,5 +277,13 @@ export interface LevelData {
   enemies: EnemySpawnDef[];
   arenas: ArenaDef[];
   camHints: CamHintDef[];
+  movers: MoverDef[];
+  hazards: HazardDef[];
+  tracks: TrackDef[];
+  pursuers: PursuerDef[];
+  weather: WeatherDef[];
+  searchlights: SearchlightDef[];
+  /** Scenery that streams past (the train level); purely visual, metres per second along -Z. */
+  scroll?: { speed: number };
   killY: number;
 }

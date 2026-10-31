@@ -47,6 +47,8 @@ export type PlayerMode =
   | "cover"
   | "crate"
   | "locked"
+  /** Riding the jeep; GameSim places the player in the seat every step. */
+  | "vehicle"
   | "dead";
 
 export type PlayerEventType =
@@ -235,6 +237,7 @@ export class PlayerController {
         this.lockTimer -= dt;
         if (this.lockTimer <= 0) this.mode = "ground";
         break;
+      case "vehicle":
       case "dead":
         break;
     }

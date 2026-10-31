@@ -155,6 +155,36 @@ export const TUNING = {
     peekInterval: [1.2, 2.6] as [number, number],
     burstLength: [2, 5] as [number, number],
   },
+
+  /** The Ch4 jeep. Arcade handling: easy to drive with one thumb. */
+  vehicle: {
+    accel: 9,
+    brake: 18,
+    drag: 0.12,
+    boostSpeed: 1.3,
+    steerRate: 9,
+    hp: 100,
+    crashDamage: 22,
+    crashSlow: 0.35,
+    halfWidth: 1.0,
+    halfLength: 2.1,
+    height: 1.6,
+    seatHeight: 1.1,
+    gunnerWeave: 2.2,
+  },
+
+  pursuer: {
+    fireInterval: [1.1, 2.0] as [number, number],
+    hitChance: 0.35,
+    damage: 7,
+    catchUp: 1.8,
+  },
+
+  searchlight: {
+    /** Seconds in the beam before the alarm goes off. */
+    alarmTime: 1.2,
+    decay: 0.6,
+  },
 } as const;
 
 export type Tuning = typeof TUNING;

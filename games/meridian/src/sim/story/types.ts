@@ -40,15 +40,28 @@ export type Action =
   | { type: "give"; weapon?: WeaponId; ammo?: number; grenades?: number; bottles?: number }
   | { type: "stealth"; active: boolean }
   | { type: "checkpoint"; id: string }
+  | { type: "mover"; id: string; active: boolean }
+  | { type: "hazard"; id: string; active: boolean }
+  | { type: "weather"; id: string; active: boolean }
+  | { type: "searchlight"; id: string; active: boolean }
+  /** Puts the player in a vehicle on the given track (Ch4 chase). */
+  | { type: "vehicle"; track: string }
+  /** Brings in the enemy jeeps of a group. */
+  | { type: "pursuit"; group: string }
   | { type: "complete" };
 
 /** Actions that change the world and must be replayed when restoring a checkpoint. */
-export const WORLD_ACTIONS: Action["type"][] = ["remove", "reveal", "revealInteract", "objective", "spawn", "give", "music"];
+export const WORLD_ACTIONS: Action["type"][] = ["remove", "reveal", "revealInteract", "objective", "spawn", "give", "music", "mover", "hazard", "weather", "searchlight"];
 
 export type PuzzleDef =
   | { id: string; type: "pillars"; pillars: string[]; solution: number[]; initial: number[]; onSolve: string; hint: string }
   | { id: string; type: "sequence"; levers: string[]; order: string[]; onSolve: string; hint: string }
-  | { id: string; type: "plates"; plates: Array<{ min: V3; max: V3 }>; onSolve: string; hint: string };
+  | { id: string; type: "plates"; plates: Array<{ min: V3; max: V3 }>; onSolve: string; hint: string }
+  /**
+   * Ring bells in the right order. `order` lists bell indexes (0 = lowest note). `listen` is an
+   * interact that plays the tune again; every note is shown on screen as well as heard.
+   */
+  | { id: string; type: "bells"; bells: string[]; order: number[]; listen: string; onSolve: string; hint: string };
 
 export interface JournalEntry {
   id: string;

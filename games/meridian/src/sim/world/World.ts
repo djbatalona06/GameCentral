@@ -98,9 +98,10 @@ export class World {
 
   constructor(data: LevelData) {
     this.data = data;
-    this.boxes = data.boxes.map((b) => ({ ...b, removed: !!b.hidden, hpLeft: b.hp ?? Infinity }));
+    // Copy corners so moving platforms never change the chapter's original data.
+    this.boxes = data.boxes.map((b) => ({ ...b, min: { ...b.min }, max: { ...b.max }, removed: !!b.hidden, hpLeft: b.hp ?? Infinity }));
     this.crates = data.crates.map((c) => ({ id: c.id, min: { ...c.min }, max: { ...c.max } }));
-    this.ledges = data.ledges.map((l) => ({ ...l, removed: false, crumbleTimer: 0 }));
+    this.ledges = data.ledges.map((l) => ({ ...l, a: { ...l.a }, b: { ...l.b }, removed: false, crumbleTimer: 0 }));
   }
 
   /** Remove (collapse) every box and ledge in a group. */
@@ -115,6 +116,28 @@ export class World {
     for (const b of this.boxes) if (b.group === group) b.removed = false;
     for (const l of this.ledges) if (l.group === group) l.removed = false;
     this.revision++;
+  }
+
+  /**
+   * Moves every box and ledge in a group (a moving platform). Unlike remove/reveal this does not
+   * bump `revision`, because it happens every frame; the renderer moves the group's mesh instead.
+   */
+  translateGroup(group: string, d: V3): void {
+    const mv = (p: V3) => {
+      p.x += d.x;
+      p.y += d.y;
+      p.z += d.z;
+    };
+    for (const b of this.boxes) {
+      if (b.group !== group) continue;
+      mv(b.min);
+      mv(b.max);
+    }
+    for (const l of this.ledges) {
+      if (l.group !== group) continue;
+      mv(l.a);
+      mv(l.b);
+    }
   }
 
   damageBox(box: RuntimeBox, amount: number): boolean {

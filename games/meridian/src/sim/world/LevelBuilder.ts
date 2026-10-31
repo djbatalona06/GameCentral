@@ -7,10 +7,15 @@ import type { ArchetypeId } from "../ai/archetypes";
 import type { WeaponId } from "../combat/weapons";
 import type {
   BoxDef,
+  HazardDef,
   InteractKind,
   LevelData,
   Material,
+  MoverDef,
   PickupType,
+  SearchlightDef,
+  TrackDef,
+  WeatherDef,
 } from "./types";
 
 export type Vec = [number, number, number];
@@ -44,6 +49,12 @@ export class LevelBuilder {
       enemies: [],
       arenas: [],
       camHints: [],
+      movers: [],
+      hazards: [],
+      tracks: [],
+      pursuers: [],
+      weather: [],
+      searchlights: [],
       killY,
     };
   }
@@ -240,7 +251,59 @@ export class LevelBuilder {
     return this;
   }
 
+  /** Makes every box and ledge in `group` travel along `path` (offsets from where they start). */
+  mover(id: string, group: string, path: Vec[], speed: number, opts: Partial<Pick<MoverDef, "mode" | "pause" | "startActive">> = {}): this {
+    this.data.movers.push({ id, group, path: path.map(v), speed, mode: opts.mode ?? "pingpong", pause: opts.pause ?? 1.5, startActive: opts.startActive ?? true });
+    return this;
+  }
+
+  /** A box that kills (or hurts) on contact; give it a velocity to make it sweep. */
+  hazard(id: string, kind: HazardDef["kind"], min: Vec, max: Vec, opts: Partial<Omit<HazardDef, "id" | "kind" | "min" | "max" | "vel">> & { vel?: Vec } = {}): this {
+    this.data.hazards.push({
+      id,
+      kind,
+      min: v(min),
+      max: v(max),
+      vel: v(opts.vel ?? [0, 0, 0]),
+      travel: opts.travel ?? 0,
+      every: opts.every ?? 0,
+      damage: opts.damage ?? Infinity,
+      startActive: opts.startActive ?? true,
+      warn: opts.warn,
+    });
+    return this;
+  }
+
+  /** A vehicle chase road through the given centre points. */
+  track(id: string, points: Vec[], width: number, mode: TrackDef["mode"], speed: number, onEnd: string): this {
+    this.data.tracks.push({ id, points: points.map(v), width, mode, speed, onEnd });
+    return this;
+  }
+
+  pursuer(track: string, group: string, gap: number, lateral: number, hp = 160): this {
+    this.data.pursuers.push({ id: this.id("pursuer"), track, group, gap, lateral, hp });
+    return this;
+  }
+
+  weather(id: string, kind: WeatherDef["kind"], min: Vec, max: Vec, opts: Partial<Pick<WeatherDef, "sightScale" | "noiseScale" | "fog" | "startActive">> & { wind?: Vec } = {}): this {
+    const preset = { sandstorm: { sightScale: 0.35, noiseScale: 0.5, fog: 0.06 }, snow: { sightScale: 0.7, noiseScale: 0.6, fog: 0.025 }, rain: { sightScale: 0.8, noiseScale: 0.5, fog: 0.015 } }[kind];
+    this.data.weather.push({ id, kind, min: v(min), max: v(max), ...preset, wind: v(opts.wind ?? [0, 0, 0]), startActive: opts.startActive ?? true });
+    const w = this.data.weather[this.data.weather.length - 1];
+    if (opts.sightScale !== undefined) w.sightScale = opts.sightScale;
+    if (opts.noiseScale !== undefined) w.noiseScale = opts.noiseScale;
+    if (opts.fog !== undefined) w.fog = opts.fog;
+    return this;
+  }
+
+  searchlight(id: string, pos: Vec, yawDeg: number, sweepDeg: number, period: number, arena: string, range = 28, coneDeg = 9): this {
+    const r = Math.PI / 180;
+    const def: SearchlightDef = { id, pos: v(pos), yaw: yawDeg * r, sweep: sweepDeg * r, period, range, cone: coneDeg * r, arena };
+    this.data.searchlights.push(def);
+    return this;
+  }
+
   build(): LevelData {
     return this.data;
   }
 }
+
