@@ -12,13 +12,26 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "node tests/e2e/smoke.mjs",
-    "assets": "node scripts/optimize-assets.mjs"
+    "assets": "node scripts/optimize-assets.mjs",
+    "cap:sync": "npm run build && cap sync",
+    "android:open": "cap open android",
+    "ios:open": "cap open ios",
+    "icons": "capacitor-assets generate --assetPath resources --iconBackgroundColor \"#0d1117\" --iconBackgroundColorDark \"#0d1117\" --splashBackgroundColor \"#0d1117\" --splashBackgroundColorDark \"#0d1117\" --android --ios"
   },
   "dependencies": {
     "@babylonjs/core": "^9.33.1",
-    "@babylonjs/loaders": "^9.33.1"
+    "@babylonjs/loaders": "^9.33.1",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4"
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^8.6.0",
     "@gltf-transform/cli": "^4.5.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",

@@ -1,0 +1,115 @@
+# Builds the Meridian Android app on GitHub's computers (this needs the Android SDK, which
+# GitHub's Ubuntu runners already have). Every run uploads a test APK you can install on a
+# phone. If signing secrets are set, pushes to main also build a signed AAB for Google Play.
+name: Meridian Android
+
+on:
+  push:
+    branches: [main]
+    paths: ["games/meridian/**", ".github/workflows/meridian-android.yml"]
+  pull_request:
+    paths: ["games/meridian/**", ".github/workflows/meridian-android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: games/meridian
+
+jobs:
+  apk:
+    name: Test, build web, build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: games/meridian/package-lock.json
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Copy the web build into the Android project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: games/meridian/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meridian-debug-apk
+          path: games/meridian/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  release:
+    name: Signed Play Store bundle (only when secrets exist)
+    needs: apk
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - name: Skip when no signing key is configured
+        if: env.HAS_KEYSTORE != 'true'
+        working-directory: .
+        run: echo "No ANDROID_KEYSTORE_BASE64 secret yet; see games/meridian/docs/store-release.md. Skipping the signed build."
+
+      - uses: actions/checkout@v4
+        if: env.HAS_KEYSTORE == 'true'
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_KEYSTORE == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: games/meridian/package-lock.json
+
+      - uses: actions/setup-java@v4
+        if: env.HAS_KEYSTORE == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Build web and sync
+        if: env.HAS_KEYSTORE == 'true'
+        run: npm ci && npm run build && npx cap sync android
+
+      - name: Build signed AAB
+        if: env.HAS_KEYSTORE == 'true'
+        working-directory: games/meridian/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          ./gradlew bundleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.jks" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_KEYSTORE == 'true'
+        with:
+          name: meridian-release-aab
+          path: games/meridian/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 30

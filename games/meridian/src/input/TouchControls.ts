@@ -6,6 +6,7 @@ import { TUNING } from "../config/tuning";
 import type { Orientation, Settings, TouchLayout } from "../core/Settings";
 import type { ButtonAction } from "./actions";
 import type { InputSource } from "./InputManager";
+import { vibrate } from "../platform/native";
 
 interface ButtonDef {
   id: string;
@@ -244,7 +245,7 @@ export class TouchControls {
       if (!this.editing) {
         this.src.held.add(def.action);
         this.src.tapped.add(def.action);
-        if (this.settings().controls.vibration) navigator.vibrate?.(8);
+        if (this.settings().controls.vibration) vibrate(8);
       }
       return;
     }

@@ -3,6 +3,7 @@
 
 import { TUNING } from "../config/tuning";
 import { SettingsStore, PRESETS, type Settings } from "./Settings";
+import { initNative, vibrate } from "../platform/native";
 import { openStore } from "../save/storage";
 import { SaveManager } from "../save/SaveManager";
 import { AUTOSAVE_SLOT, SLOT_COUNT, newSave, type SaveFile } from "../save/schema";
@@ -157,6 +158,16 @@ export class Game {
     window.addEventListener("keydown", unlock);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden && this.state === "playing") this.pause();
+    });
+    // Store app: the Android Back button goes back in menus, or pauses the game.
+    void initNative({
+      back: () => {
+        if (this.ui.open) this.ui.back();
+        else if (this.state === "playing") this.pause();
+      },
+      pause: () => {
+        if (this.state === "playing") this.pause();
+      },
     });
     document.addEventListener("pointerlockchange", () => {
       if (!document.pointerLockElement && this.state === "playing" && this.keyboard.pointerLookEnabled && this.input.device === "keyboard") this.pause();
@@ -771,29 +782,29 @@ export class Game {
         break;
       case "playerDied":
         this.deathTimer = 1.6;
-        if (vib) navigator.vibrate?.([60, 40, 120]);
+        if (vib) vibrate([60, 40, 120]);
         this.gamepad.rumble(1, 1, 400);
         break;
       case "complete":
         void this.showResults();
         break;
       case "playerHurt":
-        if (vib) navigator.vibrate?.(25);
+        if (vib) vibrate(25);
         this.gamepad.rumble(0.4, 0.6, 120);
         break;
       case "explosion":
-        if (vib) navigator.vibrate?.(70);
+        if (vib) vibrate(70);
         this.gamepad.rumble(1, 0.8, 300);
         break;
       case "hitmarker":
         this.gamepad.rumble(0, 0.3, 40);
         break;
       case "treasure":
-        if (vib) navigator.vibrate?.([20, 40, 20]);
+        if (vib) vibrate([20, 40, 20]);
         break;
       case "player":
         if (ev.ev.type === "hardLand") {
-          if (vib) navigator.vibrate?.(35);
+          if (vib) vibrate(35);
           this.gamepad.rumble(0.6, 0.3, 120);
         }
         break;

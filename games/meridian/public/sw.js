@@ -1,8 +1,8 @@
 // Offline support: cache the game's files the first time they load, then serve them from cache.
-const CACHE = "meridian-v1";
+const CACHE = "meridian-v2";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./index.html", "./manifest.webmanifest", "./icon.svg"])));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./index.html", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png"])));
   self.skipWaiting();
 });
 
