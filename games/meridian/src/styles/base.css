@@ -1,0 +1,95 @@
+/* Design tokens and page basics. Text scales with the player's Text size setting (--text-scale). */
+:root {
+  --text-scale: 1;
+  --bg: #0f1418;
+  --panel: rgba(16, 22, 28, 0.92);
+  --panel-solid: #161e25;
+  --ink: #f3ecdc;
+  --ink-dim: #b9b2a3;
+  --accent: #e9b949;
+  --accent-ink: #1a1408;
+  --teal: #2a9d8f;
+  --danger: #ff5a4e;
+  --focus: #ffd75e;
+  --radius: 14px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --display: Georgia, "Times New Roman", serif;
+  --fs-body: calc(17px * var(--text-scale));
+  --fs-small: calc(14px * var(--text-scale));
+  --fs-h1: calc(32px * var(--text-scale));
+  --fs-h2: calc(21px * var(--text-scale));
+  color-scheme: dark;
+}
+
+body.high-contrast {
+  --panel: #000;
+  --panel-solid: #000;
+  --ink: #fff;
+  --ink-dim: #e8e8e8;
+  --accent: #ffe100;
+  --focus: #00e5ff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  display: block;
+  outline: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+button, input, select { font: inherit; color: inherit; }
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  transition-duration: 0.001ms !important;
+}
+
+.boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--display);
+  font-size: var(--fs-h2);
+  letter-spacing: 0.3em;
+  color: var(--ink-dim);
+}

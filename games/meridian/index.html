@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+    <meta name="theme-color" content="#0f1418">
+    <meta name="description" content="Meridian: an original treasure-hunting action-adventure for phones and browsers.">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Meridian</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icon.svg">
+    <link rel="stylesheet" href="./src/styles/base.css">
+    <link rel="stylesheet" href="./src/styles/menus.css">
+    <link rel="stylesheet" href="./src/styles/hud.css">
+    <link rel="stylesheet" href="./src/styles/touch.css">
+  </head>
+  <body>
+    <canvas id="game" aria-label="Game view" tabindex="-1"></canvas>
+    <div id="hud-root"></div>
+    <div id="touch-root"></div>
+    <div id="ui-root"></div>
+    <div id="live" class="sr-only" aria-live="polite"></div>
+    <div id="boot" class="boot">MERIDIAN</div>
+    <noscript>Meridian needs JavaScript and WebGL to run.</noscript>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

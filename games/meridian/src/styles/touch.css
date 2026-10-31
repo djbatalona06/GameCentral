@@ -1,0 +1,47 @@
+/* Touch controls. Opacity and size follow the player's settings. */
+#touch-root { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+.touch-controls { position: absolute; inset: 0; pointer-events: auto; touch-action: none; --tc-opacity: 0.55; }
+.touch-controls.hidden { display: none; }
+.tc-btn {
+  position: absolute;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  background: rgba(20, 26, 32, 0.55);
+  opacity: var(--tc-opacity);
+  font-size: calc(12px * var(--text-scale));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  touch-action: none;
+}
+.tc-btn.tc-pressed { background: rgba(233, 185, 73, 0.6); opacity: 1; transform: scale(0.94); }
+.tc-btn.tc-on { border-color: var(--accent); background: rgba(233, 185, 73, 0.35); }
+.tc-btn.tc-dim { opacity: calc(var(--tc-opacity) * 0.45); }
+.tc-btn.tc-glow { border-color: var(--danger); box-shadow: 0 0 14px rgba(255, 90, 78, 0.8); opacity: 1; }
+.tc-interact:not(.tc-dim) { border-color: var(--accent); opacity: 1; }
+.tc-fire { border-color: rgba(255, 120, 100, 0.8); }
+.tc-stick {
+  position: absolute;
+  width: 124px;
+  height: 124px;
+  margin: -62px 0 0 -62px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(20, 26, 32, 0.25);
+  display: none;
+}
+.tc-stick.active { display: block; }
+.tc-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  transform: translate(-50%, -50%);
+}
+.editing .tc-btn { opacity: 1; border-style: dashed; border-color: var(--focus); }
