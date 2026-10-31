@@ -140,8 +140,33 @@ export class HUD {
       case "cutscene":
         this.el.classList.toggle("cinematic", ev.active);
         break;
+      case "warning":
+        this.q("warning").textContent = ev.text;
+        this.q("warning").classList.add("show");
+        this.warningTimer = 3;
+        if (a.voiceLines) this.speak?.(ev.text, "Narrator");
+        break;
+      case "bell": {
+        // Every note is shown as text too, so the bell puzzle never needs hearing.
+        const b = this.q("bell");
+        b.textContent = `♪ ${ev.caption}`;
+        b.classList.add("show");
+        this.bellTimer = 1.6;
+        break;
+      }
+      case "vehicle":
+        if (ev.kind === "crash" && a.soundIndicators) this.addSound("Crash!", yawOf(sub(ev.pos, sim.player.pos)));
+        break;
+      case "searchlightAlarm":
+        this.q("warning").textContent = "Spotted by the searchlight!";
+        this.q("warning").classList.add("show");
+        this.warningTimer = 2.5;
+        break;
     }
   }
+
+  private warningTimer = 0;
+  private bellTimer = 0;
 
   private addSound(label: string, worldYaw: number): void {
     const s = document.createElement("div");
@@ -175,6 +200,8 @@ export class HUD {
       [(this.tutorialTimer -= dt), "tutorial"],
       [(this.objectiveTimer -= dt), "objective"],
       [(this.checkpointTimer -= dt), "checkpoint"],
+      [(this.warningTimer -= dt), "warning"],
+      [(this.bellTimer -= dt), "bell"],
     ];
     for (const [t, role] of timers) {
       if (t > 0) continue;
@@ -184,6 +211,14 @@ export class HUD {
     const subs = this.q("subtitles");
     subs.dataset.size = s.a11y.subtitleSize;
     subs.style.setProperty("--sub-bg", String(s.a11y.subtitleBackground));
+
+    // Searchlight exposure and jeep condition meters (only shown when they matter).
+    const exposure = sim.searchlightExposure;
+    this.q("spotted").classList.toggle("show", exposure > 0.02 && !sim.cutscene);
+    this.q("spotted-fill").style.width = `${Math.round(exposure * 100)}%`;
+    const jeep = sim.riding && sim.vehicle ? sim.vehicle.hp / 100 : -1;
+    this.q("jeep").classList.toggle("show", jeep >= 0 && !sim.cutscene);
+    if (jeep >= 0) this.q("jeep-fill").style.width = `${Math.round(Math.max(0, jeep) * 100)}%`;
 
     // Health: red vignette grows as health drops.
     const hpFrac = sim.health.hp / sim.health.max;

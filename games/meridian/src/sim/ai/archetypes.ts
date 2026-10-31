@@ -2,7 +2,7 @@
 
 import type { WeaponId } from "../combat/weapons";
 
-export type ArchetypeId = "rifleman" | "shotgunner" | "sniper" | "grenadier" | "heavy" | "brute" | "lieutenant";
+export type ArchetypeId = "rifleman" | "shotgunner" | "sniper" | "grenadier" | "heavy" | "brute" | "lieutenant" | "kessa";
 
 export type SquadRole = "suppress" | "flank" | "overwatch" | "flush" | "anchor" | "rush" | "boss";
 
@@ -67,5 +67,11 @@ export const ARCHETYPES: Record<ArchetypeId, Archetype> = {
     id: "lieutenant", name: "Kessa Varn, Gilt Lieutenant", hp: 600, weapon: "rifle", accuracy: [0.2, 0.5], damage: 10,
     range: [6, 20], moveSpeed: 4.0, aggression: 0.5, role: "boss", frontArmor: 0.5,
     melee: { damage: 30, windup: 0.6 }, grenades: 6, color: "#d4af37", height: 1.85,
+  },
+  /** Kessa's rematch on the train roof (Ch6): tougher, faster and quicker to throw grenades. */
+  kessa: {
+    id: "kessa", name: "Kessa Varn", hp: 800, weapon: "rifle", accuracy: [0.25, 0.55], damage: 11,
+    range: [4, 16], moveSpeed: 4.6, aggression: 0.65, role: "boss", frontArmor: 0.5,
+    melee: { damage: 34, windup: 0.5 }, grenades: 8, color: "#d4af37", height: 1.85,
   },
 };

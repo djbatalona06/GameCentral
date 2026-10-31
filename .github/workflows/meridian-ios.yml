@@ -1,0 +1,46 @@
+# Checks that the Meridian iOS app compiles, on one of GitHub's Mac computers. It builds for
+# the iPhone simulator with signing turned off, so it needs no Apple account. Making a signed
+# App Store build still needs your Apple Developer account (see docs/store-release.md).
+name: Meridian iOS
+
+on:
+  push:
+    branches: [main]
+    paths: ["games/meridian/**", ".github/workflows/meridian-ios.yml"]
+  pull_request:
+    paths: ["games/meridian/**", ".github/workflows/meridian-ios.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: games/meridian
+
+jobs:
+  simulator:
+    name: Build for the iOS simulator
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: games/meridian/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Copy the web build into the iOS project
+        run: npx cap sync ios
+
+      - name: Compile (no signing)
+        working-directory: games/meridian/ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -40

@@ -21,7 +21,7 @@ import {
   yawDir,
   yawOf,
 } from "./math";
-import { World, inside, rayAabb } from "./world/World";
+import { World, inside, overlaps, rayAabb } from "./world/World";
 import { PlayerController, type PlayerEvent } from "./player/PlayerController";
 import { type CameraState, newCamera, updateCamera } from "./player/CameraRig";
 import {
@@ -43,9 +43,12 @@ import { Enemy, type DifficultyMods, type EnemyContext } from "./ai/Enemy";
 import { NavGrid } from "./ai/NavGrid";
 import { SquadDirector } from "./ai/SquadDirector";
 import type { Noise } from "./ai/Perception";
-import { type PuzzleState, canSkip, newPuzzle, pullLever, rotatePillar, showHint, updatePlates } from "./story/Puzzles";
+import { type PuzzleState, bellCaption, canSkip, newPuzzle, pullLever, ringBell, rotatePillar, showHint, updatePlates } from "./story/Puzzles";
+import { type HazardState, type MoverState, hazardBox, newHazard, newMover, setHazardActive, stepHazard, stepMover } from "./world/Dynamics";
+import { type Pursuer, type VehicleState, newPursuer, newVehicle, pursuerBox, pursuerHead, seatPos, stepPursuer, stepVehicle, trackAt } from "./vehicle/Vehicle";
+import { type SearchlightState, beamYaw, inBeam, newSearchlight, stepSearchlight } from "./ai/Searchlight";
 import { type Action, type ChapterDef, type Line, type CameraShot, type MusicMood, WORLD_ACTIONS } from "./story/types";
-import type { InteractDef } from "./world/types";
+import type { InteractDef, WeatherDef } from "./world/types";
 
 // ------------------------------------------------------------------ public types
 
@@ -156,7 +159,12 @@ export type SimEvent =
   | { type: "boxBroken"; pos: V3 }
   | { type: "grenade"; pos: V3; byPlayer: boolean }
   | { type: "interact"; kind: InteractDef["kind"]; pos: V3 }
-  | { type: "bossPhase"; phase: number };
+  | { type: "bossPhase"; phase: number }
+  | { type: "bell"; index: number; count: number; pos: V3; caption: string }
+  | { type: "warning"; text: string }
+  | { type: "vehicle"; kind: "enter" | "crash" | "exit" | "wreck"; pos: V3 }
+  | { type: "pursuerDown"; pos: V3 }
+  | { type: "searchlightAlarm"; pos: V3 };
 
 export interface Projectile {
   id: number;
@@ -240,12 +248,29 @@ export class GameSim {
   private wasAiming = false;
   currentLine: Line | null = null;
 
+  movers: MoverState[] = [];
+  hazards: HazardState[] = [];
+  searchlights: SearchlightState[] = [];
+  /** Weather volumes that are switched on. */
+  weatherOn = new Set<string>();
+  /** The jeep (stays set after the chase so the renderer can leave it parked). */
+  vehicle: VehicleState | null = null;
+  pursuers: Pursuer[] = [];
+  private melody: Array<{ at: number; index: number; count: number; pos: V3 }> = [];
+
   constructor(chapter: ChapterDef, opts: GameplayOptions, snapshot?: Snapshot, seed = 1234) {
     if (!chapter.build || !chapter.script) throw new Error(`Chapter ${chapter.id} is not playable yet`);
     this.chapter = chapter;
     this.opts = opts;
     this.rand = rng(seed);
     this.world = new World(chapter.build());
+    const d = this.world.data;
+    this.movers = d.movers.map(newMover);
+    // A mover whose path doesn't start at its built position jumps there first.
+    for (const m of this.movers) if (m.offset.x || m.offset.y || m.offset.z) this.world.translateGroup(m.def.group, m.offset);
+    this.hazards = d.hazards.map(newHazard);
+    this.searchlights = d.searchlights.map(newSearchlight);
+    for (const w of d.weather) if (w.startActive) this.weatherOn.add(w.id);
     const script = chapter.script;
     this.puzzles = script.puzzles.map(newPuzzle);
     this.squad = new SquadDirector(opts.difficulty);
@@ -452,6 +477,31 @@ export class GameSim {
       case "checkpoint":
         if (!this.replaying) this.forceCheckpoint(a.id);
         break;
+      case "mover": {
+        const m = this.movers.find((x) => x.def.id === a.id);
+        if (m) m.active = a.active;
+        break;
+      }
+      case "hazard": {
+        const h = this.hazards.find((x) => x.def.id === a.id);
+        if (h) setHazardActive(h, a.active);
+        break;
+      }
+      case "weather":
+        if (a.active) this.weatherOn.add(a.id);
+        else this.weatherOn.delete(a.id);
+        break;
+      case "searchlight": {
+        const l = this.searchlights.find((x) => x.def.id === a.id);
+        if (l) l.active = a.active;
+        break;
+      }
+      case "vehicle":
+        if (!this.replaying) this.enterVehicle(a.track);
+        break;
+      case "pursuit":
+        if (!this.replaying) this.spawnPursuers(a.group);
+        break;
       case "complete":
         if (!this.replaying) {
           this.completed = true;
@@ -521,6 +571,7 @@ export class GameSim {
       }
     }
     this.updateDialogue(dt);
+    this.updateMelody();
 
     if (this.cutscene) {
       this.updateCutscene(dt, input);
@@ -530,15 +581,19 @@ export class GameSim {
     if (this.dead) return;
 
     const p = this.player;
+    this.updateMovers(dt);
+    const riding = this.riding;
+    const gunner = riding && this.vehicle!.track.def.mode === "gunner";
     // Hanging and rope swinging allow only the sidearm.
     const oneHanded = p.mode === "hang" || p.mode === "rope";
-    const canAim = ["ground", "air", "cover", "hang", "rope", "slide"].includes(p.mode) && !this.throwAiming && !p.inWater;
+    const canAim = (riding ? gunner : ["ground", "air", "cover", "hang", "rope", "slide"].includes(p.mode)) && !this.throwAiming && !p.inWater;
     this.aiming = input.buttons.aim.held && canAim && !!this.activeWeapon();
     if (this.aiming && oneHanded && this.weapons.sidearm) this.weapons.active = "sidearm";
     if (this.aiming && p.sprinting) p.sprinting = false;
 
     // Aim assist: slow-down while aiming near a target, snap when aiming starts.
     const targets = this.enemies.filter((e) => e.alive && this.world.lineOfSight(this.cam.position, e.head().c)).map((e) => ({ pos: { ...e.head().c, y: e.head().c.y - 0.35 } }));
+    for (const pu of this.pursuers) if (pu.alive) targets.push({ pos: { ...pursuerHead(pu).c, y: pursuerHead(pu).c.y - 0.5 } });
     const assist = aimAssist(this.aiming ? this.opts.aimAssist : "off", this.cam.pivot, this.cam.yaw, this.cam.pitch, targets);
     let lookYaw = input.look.yaw * assist.sensitivity;
     let lookPitch = input.look.pitch * assist.sensitivity;
@@ -558,7 +613,11 @@ export class GameSim {
 
     if (input.buttons.shoulderSwap.pressed) this.cam.shoulder = this.cam.shoulder === 1 ? -1 : 1;
 
-    p.update(dt, input, this.cam.yaw, this.world, this.aiming, { autoTraversal: this.opts.autoTraversal, holdToToggle: false });
+    if (riding) this.updateVehicle(dt, input);
+    else {
+      p.update(dt, input, this.cam.yaw, this.world, this.aiming, { autoTraversal: this.opts.autoTraversal, holdToToggle: false });
+      this.applyWind(dt);
+    }
     for (const ev of p.events) this.onPlayerEvent(ev);
     p.events.length = 0;
 
@@ -568,13 +627,19 @@ export class GameSim {
 
     this.coverTime = p.mode === "cover" ? this.coverTime + dt : 0;
 
-    this.updateWeapons(dt, input, assist.magnetYaw, assist.magnetPitch);
-    this.updateMelee(dt, input);
-    this.updateThrow(input);
-    this.updateInteract(input);
+    if (!riding || gunner) this.updateWeapons(dt, input, assist.magnetYaw, assist.magnetPitch);
+    if (riding) this.prompt = null;
+    else {
+      this.updateMelee(dt, input);
+      this.updateThrow(input);
+      this.updateInteract(input);
+    }
     this.updateTagging(dt);
     this.updateProjectiles(dt);
     this.updateEnemies(dt);
+    this.updatePursuers(dt);
+    this.updateHazards(dt);
+    this.updateSearchlights(dt);
     this.updateWorldTriggers();
     this.updatePuzzles(dt);
     tickHealth(this.health, dt);
@@ -594,7 +659,8 @@ export class GameSim {
       autoRecenter: this.opts.autoRecenter,
       invertY: this.opts.invertY,
       fovScale: this.opts.fovScale,
-      hints: this.world.data.camHints,
+      // In the jeep the camera sits further back and a little higher to show the road ahead.
+      hints: this.riding ? [VEHICLE_CAM] : this.world.data.camHints,
     };
   }
 
@@ -638,8 +704,9 @@ export class GameSim {
   private onPlayerEvent(ev: PlayerEvent): void {
     this.emit({ type: "player", ev });
     const n = TUNING.stealth.noise;
-    if (ev.type === "sprintStep") this.makeNoise({ pos: ev.pos, radius: n.sprint, kind: "sprint" });
-    if (ev.type === "hardLand" || ev.type === "land") this.makeNoise({ pos: ev.pos, radius: ev.type === "hardLand" ? n.land : n.land * 0.4, kind: "land" });
+    const muffle = this.weather?.noiseScale ?? 1;
+    if (ev.type === "sprintStep") this.makeNoise({ pos: ev.pos, radius: n.sprint * muffle, kind: "sprint" });
+    if (ev.type === "hardLand" || ev.type === "land") this.makeNoise({ pos: ev.pos, radius: (ev.type === "hardLand" ? n.land : n.land * 0.4) * muffle, kind: "land" });
     if (ev.type === "crumble") this.emit({ type: "shake", amount: 0.5 });
   }
 
@@ -706,8 +773,18 @@ export class GameSim {
       const pitch = this.cam.pitch + off.pitch + magnetPitch;
       const dir = lookDir(yaw, pitch);
       const res = this.hitscan(this.cam.position, dir, def.range, muzzle);
-      this.emit({ type: "shot", from: muzzle, to: res.point, byPlayer: true, weapon: w.id, hit: !!res.enemy });
-      if (res.enemy) {
+      this.emit({ type: "shot", from: muzzle, to: res.point, byPlayer: true, weapon: w.id, hit: !!res.enemy || !!res.pursuer });
+      if (res.pursuer) {
+        anyHit = true;
+        if (res.headshot) head = true;
+        const dmg = shotDamage(def, dist(muzzle, res.point), res.headshot) * (res.headshot ? 1.5 : 1);
+        res.pursuer.hp -= dmg;
+        res.pursuer.hitFlash = 0.12;
+        if (res.pursuer.hp <= 0) {
+          kill = true;
+          this.destroyPursuer(res.pursuer);
+        }
+      } else if (res.enemy) {
         anyHit = true;
         const d = dist(muzzle, res.point);
         const dmg = shotDamage(def, d, res.headshot);
@@ -741,18 +818,35 @@ export class GameSim {
 
   private reticleOnEnemy(): boolean {
     const res = this.hitscan(this.cam.position, lookDir(this.cam.yaw, this.cam.pitch), 60, this.player.chest());
-    return !!res.enemy;
+    return !!res.enemy || !!res.pursuer;
   }
 
   /**
    * Traces a ray from the camera through the reticle. The first enemy or wall hit wins.
    * A second check from the muzzle stops the player shooting "through" cover the camera sees past.
    */
-  hitscan(origin: V3, dir: V3, range: number, muzzle: V3): { point: V3; enemy?: Enemy; headshot: boolean; box?: import("./world/World").RuntimeBox } {
+  hitscan(origin: V3, dir: V3, range: number, muzzle: V3): { point: V3; enemy?: Enemy; pursuer?: Pursuer; headshot: boolean; box?: import("./world/World").RuntimeBox } {
     const wall = this.world.raycast(origin, dir, range);
     let best = wall ? wall.t : range;
     let enemy: Enemy | undefined;
+    let pursuer: Pursuer | undefined;
     let headshot = false;
+    for (const pu of this.pursuers) {
+      if (!pu.alive) continue;
+      const h = pursuerHead(pu);
+      const th = raySphere(origin, dir, h.c, h.r);
+      if (th !== null && th < best) {
+        best = th;
+        pursuer = pu;
+        headshot = true;
+      }
+      const tb = rayAabb(origin, dir, pursuerBox(pu), best);
+      if (tb && tb.t < best) {
+        best = tb.t;
+        pursuer = pu;
+        headshot = false;
+      }
+    }
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const h = e.head();
@@ -769,7 +863,9 @@ export class GameSim {
         headshot = false;
       }
     }
+    if (enemy) pursuer = undefined;
     const point = add(origin, scale(dir, best));
+    if (pursuer) return { point, pursuer, headshot };
     if (enemy && !this.world.lineOfSight(muzzle, point)) {
       const toPoint = norm(sub(point, muzzle));
       const block = this.world.raycast(muzzle, toPoint, dist(muzzle, point));
@@ -1140,6 +1236,10 @@ export class GameSim {
     if (i.once) this.interactsUsed.add(i.id);
     this.emit({ type: "interact", kind: i.kind, pos: i.pos });
     for (const pz of this.puzzles) {
+      if (pz.def.type === "bells" && (pz.def.listen === i.id || pz.def.bells.includes(i.id))) {
+        this.useBell(pz, i);
+        return;
+      }
       if (pz.def.type === "pillars" && pz.def.pillars.includes(i.id)) {
         if (rotatePillar(pz, i.id)) {
           this.emit({ type: "puzzle", text: "The mechanism clicks into place.", solved: true });
@@ -1195,7 +1295,8 @@ export class GameSim {
         this.fireEvent(t.event);
       } else if (!t.once) this.triggersFired.delete(t.id);
     }
-    // Checkpoints activate on proximity, in order, and autosave.
+    // Checkpoints activate on proximity, in order, and autosave (not mid-chase).
+    if (this.riding) return;
     const cps = this.world.data.checkpoints;
     for (let i = this.lastCheckpointIndex + 1; i < cps.length; i++) {
       const c = cps[i];
@@ -1266,6 +1367,7 @@ export class GameSim {
       difficulty: this.difficultyMods,
       rand: this.rand,
       enemies: this.enemies,
+      sightScale: this.weather?.sightScale ?? 1,
       shoot: (e, hit, damage, target) => {
         const from = add(e.pos, { x: 0, y: e.crouching ? 1.0 : e.def.height - 0.35, z: 0 });
         const miss = add(target, { x: (this.rand() - 0.5) * 1.6, y: (this.rand() - 0.3) * 1.2, z: (this.rand() - 0.5) * 1.6 });
@@ -1314,6 +1416,222 @@ export class GameSim {
     );
   }
 
+  // ---------------------------------------------------------------- bells
+
+  private useBell(pz: PuzzleState, i: InteractDef): void {
+    if (pz.def.type !== "bells" || pz.solved) return;
+    const def = pz.def;
+    const count = def.bells.length;
+    const posOf = (index: number) => this.world.data.interacts.find((x) => x.id === def.bells[index])?.pos ?? i.pos;
+    if (def.listen === i.id) {
+      pz.started = true;
+      this.melody = def.order.map((index, k) => ({ at: this.time + 0.5 + k * 0.9, index, count, pos: posOf(index) }));
+      this.emit({ type: "puzzle", text: "The old tune plays from the carillon notes." });
+      return;
+    }
+    const r = ringBell(pz, i.id);
+    this.emit({ type: "bell", index: r.index, count, pos: i.pos, caption: bellCaption(r.index, count) });
+    if (r.wrong) this.emit({ type: "puzzle", text: "The note jars against the tune. Start again." });
+    if (r.solved) {
+      this.emit({ type: "puzzle", text: "The tower answers with a deep chime.", solved: true });
+      this.fireEvent(def.onSolve);
+    }
+  }
+
+  private updateMelody(): void {
+    if (!this.melody.length) return;
+    const due = this.melody.filter((m) => m.at <= this.time);
+    this.melody = this.melody.filter((m) => m.at > this.time);
+    for (const m of due) this.emit({ type: "bell", index: m.index, count: m.count, pos: m.pos, caption: bellCaption(m.index, m.count) });
+  }
+
+  // ---------------------------------------------------------------- moving platforms & hazards
+
+  private updateMovers(dt: number): void {
+    const p = this.player;
+    for (const m of this.movers) {
+      // Who is standing on this group right now (before it moves)?
+      const onGroup = (pos: V3) => {
+        const g = this.world.groundHeight(pos.x, pos.z, pos.y + 0.05, TUNING.player.radius);
+        return !!g.box && g.box.group === m.def.group && Math.abs(g.y - pos.y) < 0.06;
+      };
+      const carryPlayer = (p.mode === "ground" || p.mode === "cover" || p.mode === "crate") && p.grounded && onGroup(p.pos);
+      const riders = this.enemies.filter((e) => e.alive && onGroup(e.pos));
+      const d = stepMover(m, dt);
+      if (d.x === 0 && d.y === 0 && d.z === 0) continue;
+      this.world.translateGroup(m.def.group, d);
+      // Hanging players follow the ledge automatically; standing ones are carried here.
+      if (carryPlayer) p.pos = add(p.pos, d);
+      for (const e of riders) e.pos = add(e.pos, d);
+    }
+  }
+
+  private updateHazards(dt: number): void {
+    const p = this.player;
+    const body = p.aabb();
+    for (const h of this.hazards) {
+      if (stepHazard(h, dt) && h.def.warn) this.emit({ type: "warning", text: h.def.warn });
+      const box = hazardBox(h);
+      // A tunnel or avalanche also sweeps away any enemy standing in its path.
+      if (box && !isFinite(h.def.damage) && h.def.kind !== "kill") {
+        for (const e of this.enemies) {
+          if (!e.alive || !overlaps(e.body(), box)) continue;
+          e.damage(99999, e.pos, true);
+          this.onEnemyKilled(e, false);
+        }
+      }
+      if (!box || !overlaps(body, box)) {
+        h.contact = 0;
+        continue;
+      }
+      h.contact += dt;
+      if (!isFinite(h.def.damage)) {
+        if (!this.opts.invulnerable) this.killPlayer();
+      } else this.hurtPlayer(h.def.damage * dt, p.chest());
+    }
+  }
+
+  /** Sideways push from wind in a storm. */
+  private applyWind(dt: number): void {
+    const w = this.weather;
+    const p = this.player;
+    if (!w || (w.wind.x === 0 && w.wind.z === 0) || !(p.mode === "ground" || p.mode === "air")) return;
+    p.moveAndCollide({ x: w.wind.x * dt, y: 0, z: w.wind.z * dt }, this.world);
+  }
+
+  /** The weather the player is standing in right now, if any. */
+  get weather(): WeatherDef | null {
+    const pos = this.player.pos;
+    for (const w of this.world.data.weather) if (this.weatherOn.has(w.id) && inside(pos, w)) return w;
+    return null;
+  }
+
+  // ---------------------------------------------------------------- searchlights
+
+  private updateSearchlights(dt: number): void {
+    const p = this.player;
+    const hidden = p.inGrass && p.crouched;
+    for (const s of this.searchlights) {
+      const yaw = beamYaw(s.def, this.time);
+      const lit = s.active && !hidden && !this.dead && inBeam(s.def, yaw, p.pos) && this.world.lineOfSight(s.def.pos, p.chest());
+      if (!stepSearchlight(s, this.time, dt, lit)) continue;
+      this.stats.alerts++;
+      if (this.stealthActive) this.stats.stealthBroken = true;
+      this.emit({ type: "searchlightAlarm", pos: { ...p.pos } });
+      this.emit({ type: "alert", pos: s.def.pos });
+      for (const e of this.enemies) {
+        if (!e.alive || e.spawn.arena !== s.def.arena) continue;
+        e.lastKnown = { ...p.pos };
+        e.enterCombat();
+      }
+      this.fireEvent(`searchlightAlarm:${s.def.id}`);
+    }
+  }
+
+  /** Highest searchlight exposure, for the HUD's "spotted" meter. */
+  get searchlightExposure(): number {
+    return this.searchlights.reduce((m, s) => Math.max(m, s.exposure), 0);
+  }
+
+  // ---------------------------------------------------------------- vehicles
+
+  get riding(): boolean {
+    return !!this.vehicle && !this.vehicle.done;
+  }
+
+  private enterVehicle(trackId: string): void {
+    const track = this.world.data.tracks.find((t) => t.id === trackId);
+    if (!track) return;
+    this.vehicle = newVehicle(track);
+    const p = this.player;
+    p.mode = "vehicle";
+    p.crouched = false;
+    p.height = TUNING.player.height;
+    p.pos = seatPos(this.vehicle);
+    this.cam.yaw = this.vehicle.yaw;
+    this.emit({ type: "vehicle", kind: "enter", pos: { ...this.vehicle.pos } });
+  }
+
+  private updateVehicle(dt: number, input: InputFrame): void {
+    const v = this.vehicle!;
+    const p = this.player;
+    const evs = stepVehicle(v, { steer: input.move.x, throttle: input.move.y, boost: input.buttons.sprint.held }, this.world, dt, this.time);
+    const at = trackAt(v.track, v.s);
+    p.pos = seatPos(v);
+    p.vel = scale(at.dir, v.speed);
+    p.yaw = v.track.def.mode === "gunner" ? this.cam.yaw : v.yaw;
+    p.grounded = true;
+    for (const e of evs) {
+      if (e.type === "crash") {
+        this.emit({ type: "vehicle", kind: e.wrecked ? "wreck" : "crash", pos: e.pos });
+        this.emit({ type: "shake", amount: e.wrecked ? 1 : 0.7 });
+        if (e.wrecked) {
+          this.emit({ type: "explosion", pos: e.pos });
+          this.killPlayer();
+          return;
+        }
+      } else if (e.type === "end") this.exitVehicle();
+    }
+  }
+
+  private exitVehicle(): void {
+    const v = this.vehicle!;
+    const p = this.player;
+    const at = trackAt(v.track, v.s);
+    // Step out on the driver's side, or the other side if that's blocked.
+    for (const side of [-1, 1]) {
+      const spot = add(v.pos, scale(at.right, side * 2.2));
+      const g = this.world.groundHeight(spot.x, spot.z, spot.y + 2, TUNING.player.radius);
+      const pos = { x: spot.x, y: isFinite(g.y) ? g.y : v.pos.y, z: spot.z };
+      if (!this.world.overlapsSolid(p.aabb(pos, TUNING.player.height))) {
+        p.teleport(pos, v.yaw);
+        break;
+      }
+    }
+    if (p.mode === "vehicle") p.teleport({ ...v.pos, y: v.pos.y + 1.7 }, v.yaw);
+    for (const pu of this.pursuers) pu.alive = false;
+    this.emit({ type: "vehicle", kind: "exit", pos: { ...v.pos } });
+    this.fireEvent(v.track.def.onEnd);
+  }
+
+  private spawnPursuers(group: string): void {
+    const v = this.vehicle;
+    for (const def of this.world.data.pursuers) {
+      if (def.group !== group || this.killed.has(def.id) || this.pursuers.some((x) => x.def.id === def.id)) continue;
+      const track = this.world.data.tracks.find((t) => t.id === def.track);
+      if (track) this.pursuers.push(newPursuer(def, track, v?.s ?? 0));
+    }
+  }
+
+  private updatePursuers(dt: number): void {
+    const v = this.vehicle;
+    if (!v || v.done) return;
+    const p = this.player;
+    const mods = this.difficultyMods;
+    for (const pu of this.pursuers) {
+      if (!pu.alive || pu.def.track !== v.track.def.id) continue;
+      if (!stepPursuer(pu, v.s, v.speed, dt, this.rand, this.time)) continue;
+      const from = pursuerHead(pu).c;
+      if (!this.world.lineOfSight(from, p.chest())) continue;
+      const hit = this.rand() < TUNING.pursuer.hitChance * mods.enemyAccuracy;
+      const miss = add(p.chest(), { x: (this.rand() - 0.5) * 2, y: (this.rand() - 0.3) * 1.4, z: (this.rand() - 0.5) * 2 });
+      this.emit({ type: "shot", from, to: hit ? p.chest() : miss, byPlayer: false, weapon: "rifle", hit });
+      this.emit({ type: "sound", kind: "gunshot", pos: from });
+      if (hit) this.hurtPlayer(TUNING.pursuer.damage * mods.enemyDamage, from);
+    }
+  }
+
+  private destroyPursuer(pu: Pursuer): void {
+    pu.alive = false;
+    this.killed.add(pu.def.id);
+    this.stats.kills++;
+    this.emit({ type: "explosion", pos: { ...pu.pos } });
+    this.emit({ type: "pursuerDown", pos: { ...pu.pos } });
+    this.emit({ type: "shake", amount: 0.5 });
+    const left = this.pursuers.filter((x) => x.alive && x.def.group === pu.def.group).length;
+    if (left === 0) this.fireEvent(`pursuitClear:${pu.def.group}`);
+  }
+
   /** Enemies that have the player in sight (for the HUD's directional threat indicators). */
   threats(): Array<{ yaw: number; danger: number; tagged: boolean }> {
     return this.enemies
@@ -1325,6 +1643,8 @@ export class GameSim {
     return this.enemies.some((e) => e.alive && e.state === "combat");
   }
 }
+
+const VEHICLE_CAM = { id: "vehicle", min: { x: -1e9, y: -1e9, z: -1e9 }, max: { x: 1e9, y: 1e9, z: 1e9 }, distance: 7.5, pitch: -0.22 };
 
 function raySphere(o: V3, d: V3, c: V3, r: number): number | null {
   const oc = sub(o, c);

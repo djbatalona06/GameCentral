@@ -3,6 +3,7 @@
 
 import { TUNING } from "../config/tuning";
 import { SettingsStore, PRESETS, type Settings } from "./Settings";
+import { initNative, vibrate } from "../platform/native";
 import { openStore } from "../save/storage";
 import { SaveManager } from "../save/SaveManager";
 import { AUTOSAVE_SLOT, SLOT_COUNT, newSave, type SaveFile } from "../save/schema";
@@ -77,6 +78,10 @@ export class Game {
     this.settingsStore = new SettingsStore(store);
     await this.settingsStore.load();
     this.saves = new SaveManager(store);
+    // Phones start at a steady 30 fps (cooler, longer battery); players can raise it in Video.
+    if (!this.settings.firstRunDone && TouchControls.isTouchDevice()) this.settings.video.fpsCap = 30;
+    const q = params.get("quality");
+    if (this.debug && q && ["low", "medium", "high", "ultra", "auto"].includes(q)) this.settings.video.quality = q as Settings["video"]["quality"];
 
     const canvas = document.getElementById("game") as HTMLCanvasElement;
     const s = () => this.settings;
@@ -153,6 +158,16 @@ export class Game {
     window.addEventListener("keydown", unlock);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden && this.state === "playing") this.pause();
+    });
+    // Store app: the Android Back button goes back in menus, or pauses the game.
+    void initNative({
+      back: () => {
+        if (this.ui.open) this.ui.back();
+        else if (this.state === "playing") this.pause();
+      },
+      pause: () => {
+        if (this.state === "playing") this.pause();
+      },
     });
     document.addEventListener("pointerlockchange", () => {
       if (!document.pointerLockElement && this.state === "playing" && this.keyboard.pointerLookEnabled && this.input.device === "keyboard") this.pause();
@@ -461,7 +476,7 @@ export class Game {
     this.ui.push("layout-editor", {
       action: (a) => {
         if (a === "reset-layout") {
-          this.settings.controls.touchPositions = {};
+          this.settings.controls.touchPositions[this.touch.orientation()] = {};
           this.settingsChanged();
           return;
         }
@@ -767,29 +782,29 @@ export class Game {
         break;
       case "playerDied":
         this.deathTimer = 1.6;
-        if (vib) navigator.vibrate?.([60, 40, 120]);
+        if (vib) vibrate([60, 40, 120]);
         this.gamepad.rumble(1, 1, 400);
         break;
       case "complete":
         void this.showResults();
         break;
       case "playerHurt":
-        if (vib) navigator.vibrate?.(25);
+        if (vib) vibrate(25);
         this.gamepad.rumble(0.4, 0.6, 120);
         break;
       case "explosion":
-        if (vib) navigator.vibrate?.(70);
+        if (vib) vibrate(70);
         this.gamepad.rumble(1, 0.8, 300);
         break;
       case "hitmarker":
         this.gamepad.rumble(0, 0.3, 40);
         break;
       case "treasure":
-        if (vib) navigator.vibrate?.([20, 40, 20]);
+        if (vib) vibrate([20, 40, 20]);
         break;
       case "player":
         if (ev.ev.type === "hardLand") {
-          if (vib) navigator.vibrate?.(35);
+          if (vib) vibrate(35);
           this.gamepad.rumble(0.6, 0.3, 120);
         }
         break;
@@ -846,9 +861,10 @@ export class Game {
 
     if (sim) {
       this.audio.listener = { pos: sim.cam.position, yaw: sim.cam.yaw };
-      this.audio.update(dt, this.state === "playing" && sim.inCombat);
+      this.audio.update(dt, sim, this.state === "playing");
       this.hud.update(dt, sim, this.input.device as InputFrame["device"], this.renderer.engine.getFps());
     } else if (this.menuSim) {
+      this.audio.update(dt, null, false);
       // Slow orbit over the beach behind the menus.
       this.menuOrbit += dt * 0.05;
       const r = 26;

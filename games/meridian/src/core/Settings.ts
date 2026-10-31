@@ -8,10 +8,12 @@ import type { KeyValueStore } from "../save/storage";
 export type ColorblindMode = "none" | "protanopia" | "deuteranopia" | "tritanopia";
 export type TouchLayout = "standard" | "oneHandedRight" | "oneHandedLeft";
 export type SubtitleSize = "small" | "medium" | "large" | "xl";
-export type Quality = "auto" | "low" | "medium" | "high";
+export type Quality = "auto" | "low" | "medium" | "high" | "ultra";
+export type Orientation = "landscape" | "portrait";
+export type TouchPositions = Record<string, { x: number; y: number }>;
 
 export interface Settings {
-  version: 1;
+  version: 2;
   firstRunDone: boolean;
   gameplay: GameplayOptions;
   controls: {
@@ -27,7 +29,8 @@ export interface Settings {
     touchLayout: TouchLayout;
     touchScale: number;
     touchOpacity: number;
-    touchPositions: Record<string, { x: number; y: number }>;
+    /** Custom button positions from the layout editor, kept separately for each orientation. */
+    touchPositions: Record<Orientation, TouchPositions>;
   };
   a11y: {
     subtitles: boolean;
@@ -48,12 +51,25 @@ export interface Settings {
     tutorialHints: boolean;
     largeReticle: boolean;
   };
-  audio: { master: number; music: number; sfx: number; voice: number; ui: number; mono: boolean };
+  audio: {
+    master: number;
+    music: number;
+    sfx: number;
+    voice: number;
+    ui: number;
+    /** Wind, sea, insects, train: the world's background sound. */
+    ambience: number;
+    mono: boolean;
+    /** Lower the music while someone is talking. */
+    duck: boolean;
+    /** Squash loud peaks (explosions) so quiet sounds stay audible at low volume. */
+    nightMode: boolean;
+  };
   video: { quality: Quality; fpsCap: 30 | 60; dynamicResolution: boolean; showFps: boolean; brightness: number };
 }
 
 export const defaultSettings = (): Settings => ({
-  version: 1,
+  version: 2,
   firstRunDone: false,
   gameplay: defaultGameplay(),
   controls: {
@@ -69,7 +85,7 @@ export const defaultSettings = (): Settings => ({
     touchLayout: "standard",
     touchScale: 1,
     touchOpacity: 0.55,
-    touchPositions: {},
+    touchPositions: { landscape: {}, portrait: {} },
   },
   a11y: {
     subtitles: true,
@@ -90,7 +106,7 @@ export const defaultSettings = (): Settings => ({
     tutorialHints: true,
     largeReticle: false,
   },
-  audio: { master: 0.8, music: 0.6, sfx: 0.9, voice: 1, ui: 0.7, mono: false },
+  audio: { master: 0.8, music: 0.6, sfx: 0.9, voice: 1, ui: 0.7, ambience: 0.7, mono: false, duck: true, nightMode: false },
   video: { quality: "auto", fpsCap: 60, dynamicResolution: true, showFps: false, brightness: 1 },
 });
 
@@ -153,6 +169,17 @@ function mergeDefaults<T>(base: T, saved: unknown): T {
   return out as T;
 }
 
+/** Upgrades settings saved by older versions. v1 had one set of touch positions (landscape only). */
+export function migrateSettings(saved: unknown): unknown {
+  const s = structuredClone(saved) as { version?: number; controls?: { touchPositions?: Record<string, unknown> } };
+  if ((s.version ?? 1) < 2) {
+    const old = s.controls?.touchPositions;
+    if (s.controls) s.controls.touchPositions = { landscape: old && !("landscape" in old) ? old : {}, portrait: {} };
+    s.version = 2;
+  }
+  return s;
+}
+
 export class SettingsStore {
   current: Settings = defaultSettings();
   private listeners: Array<(s: Settings) => void> = [];
@@ -161,7 +188,7 @@ export class SettingsStore {
 
   async load(): Promise<Settings> {
     const saved = await this.store.get<unknown>("settings");
-    this.current = saved ? mergeDefaults(defaultSettings(), saved) : defaultSettings();
+    this.current = saved ? mergeDefaults(defaultSettings(), migrateSettings(saved)) : defaultSettings();
     return this.current;
   }
 

@@ -181,7 +181,59 @@ try {
   console.log(`INFO  fps under 4x CPU throttle with software WebGL: ${fps.toFixed(1)}`);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
 
-  // 11. Desktop: keyboard movement without touch controls.
+  // 11. Act I chapters 4-7 load, stay inside the phone draw-call budget, and show their set pieces.
+  for (const [ch, x, y, z] of [["4", 0, 0, 690], ["5", 0, 30, 143], ["6", 0, 4, 20], ["7", -8, 0, 22]]) {
+    await page.goto(`${BASE}?debug=1&chapter=${ch}`);
+    await page.waitForFunction(() => window.__meridian?.sim, null, { timeout: 30000 });
+    await game(([x, y, z]) => {
+      const s = window.__meridian.sim;
+      s.skipCutscene();
+      s.opts.invulnerable = true;
+      s.player.teleport({ x, y, z }, 0);
+      s.cam.yaw = 0;
+    }, [x, y, z]);
+    await page.waitForTimeout(1800);
+    const st = await game(() => window.__meridian.renderer.stats());
+    await shot(`ch0${ch}-act1`);
+    check(`chapter ${ch} renders within the phone budget`, st.drawCalls > 0 && st.drawCalls <= 150 && st.triangles <= 300000, `${st.drawCalls} draw calls, ${st.triangles} triangles`);
+  }
+
+  // 12. Portrait: the same phone held upright, then rotated mid-game.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE}?debug=1&chapter=2`);
+  await page.waitForFunction(() => window.__meridian?.sim, null, { timeout: 30000 });
+  await game(() => {
+    const g = window.__meridian;
+    g.sim.skipCutscene();
+    g.settings.controls.touchLayout = "standard"; // step 7 switched to one-handed
+    g.touch.applyLayout();
+  });
+  await page.waitForTimeout(1500);
+  await shot("portrait-ch02");
+  const inside = async () =>
+    page.evaluate(() => [...document.querySelectorAll(".tc-btn")].every((b) => {
+      const r = b.getBoundingClientRect();
+      return r.left >= -2 && r.top >= -2 && r.right <= innerWidth + 2 && r.bottom <= innerHeight + 2;
+    }));
+  check("portrait: every touch button is on screen", await inside());
+  const pz0 = await game(() => window.__meridian.sim.player.pos.z);
+  await page.evaluate(() => {
+    const root = document.querySelector(".touch-controls");
+    const o = (x, y) => ({ pointerId: 21, pointerType: "touch", clientX: x, clientY: y, bubbles: true, isPrimary: true });
+    root.dispatchEvent(new PointerEvent("pointerdown", o(80, 700)));
+    root.dispatchEvent(new PointerEvent("pointermove", o(80, 640)));
+  });
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => document.querySelector(".touch-controls").dispatchEvent(new PointerEvent("pointerup", { pointerId: 21, pointerType: "touch", clientX: 80, clientY: 640, bubbles: true })));
+  const pz1 = await game(() => window.__meridian.sim.player.pos.z);
+  check("portrait: the stick moves Ines", Math.abs(pz1 - pz0) > 1.5, `z ${pz0.toFixed(2)} -> ${pz1.toFixed(2)}`);
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(800);
+  await shot("rotated-to-landscape");
+  check("rotation: touch buttons re-lay out on screen", await inside());
+  check("rotation: no input stuck after rotating", await game(() => window.__meridian.input.touch.held.size === 0));
+
+  // 13. Desktop: keyboard movement without touch controls.
   const desk = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const dp = await desk.newPage();
   dp.on("pageerror", (e) => errors.push(`desktop pageerror: ${e.message}`));

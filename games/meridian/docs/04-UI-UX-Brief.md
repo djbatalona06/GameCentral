@@ -14,7 +14,7 @@ Cinematic and calm: a dark navy UI with warm brass accents, like an old navigato
 | Display font | Georgia / serif | Titles |
 | Body font | System UI | Everything else (fast, readable, no downloads) |
 
-## Greybox world language
+## World language (readable cues on top of the realistic look)
 These cues teach the player without words:
 - **Chalk-white edges** = you can grab this ledge. **Orange edges** = it will crumble.
 - **Knobbly pale pattern** on a wall = free-climbable.
@@ -24,6 +24,11 @@ These cues teach the player without words:
 - **Red barrels** explode. Light wooden cover breaks; stone does not.
 - Enemy **meter above the head**: yellow while suspicious, red when alerted. A **red laser** means a marksman is about to fire.
 - In high-contrast mode, the world turns dark grey, enemies bright red, the player blue and interactables yellow.
+- **Searchlight beams** warm from pale yellow to red as the "Spotted" meter fills. **Bells** swing and glow when rung, and the note appears as a caption.
+- **Big red banners** warn about tunnels and avalanches ("Tunnel! Get down!").
+
+## Look (art pass)
+Grounded, sun-baked realism without image files: physically based materials painted from noise (stone blocks, wood grain, rusty riveted metal, rippled sand, snow), a gradient sky, ACES tone mapping, sun shadows, shader water and jointed characters. Night chapters (train, docks) use cool moonlight and warm lamps. Details in `realistic-art-on-phones.md`.
 
 ## HUD layout (landscape phone)
 ```
@@ -40,6 +45,24 @@ These cues teach the player without words:
 - With touch controls on, subtitles and tutorials sit in the half of the screen without buttons. With the left-handed layout, they mirror.
 - The reticle grows with weapon spread, turns red over an enemy, and shows an X hit marker (red for a kill).
 - Red vignette = low health. Arcs = direction of damage. Labels on a ring = sounds (when sound indicators are on).
+- A slim bar under the top HUD shows the **Spotted** meter (searchlights) or the **Jeep** condition, only when relevant.
+
+## HUD layout (portrait phone)
+```
+┌────────────────────────┐
+│ OBJECTIVE ▌ …   [GOAL][II]│
+│ Ammo 15/45              │
+│ Tutorial card (full width)│
+│ Subtitles (above controls)│
+│        reticle          │
+│ toasts       [THROW][RELOAD]│
+│        [USE] [FIRE][COVER]│
+│ (stick)  [AIM]   [JUMP] │
+│  [CROUCH] [MELEE]       │
+└────────────────────────┘
+```
+- The camera keeps the same *horizontal* view as landscape (wider vertical view), so you can still see the sides.
+- Buttons live in the bottom third; the layout editor saves portrait and landscape positions separately.
 
 ## Touch controls
 - A **floating stick** appears where the left thumb lands. Pushing past the ring sprints.

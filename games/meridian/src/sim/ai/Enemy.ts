@@ -55,6 +55,8 @@ export interface EnemyContext {
   melee: (e: Enemy, damage: number) => void;
   alert: (e: Enemy, at: V3) => void;
   emit: (type: "enemyAlert" | "enemySpotted" | "bossPhase", e: Enemy, data?: number) => void;
+  /** Weather multiplier on how far enemies can see (sandstorms, snow). */
+  sightScale?: number;
 }
 
 export class Enemy {
@@ -252,7 +254,7 @@ export class Enemy {
       inGrass: p.inGrass,
       alerted: this.aware,
       los: (a, b) => ctx.world.lineOfSight(a, b),
-      rangeScale: this.def.sight,
+      rangeScale: (this.def.sight ?? 1) * (ctx.sightScale ?? 1),
     });
     this.visibleNow = vis > 0.02;
     if (this.visibleNow) {

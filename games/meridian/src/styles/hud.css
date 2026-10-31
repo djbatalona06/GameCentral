@@ -189,3 +189,80 @@ body.touch.layout-oneHandedLeft .prompt { left: 70%; }
 .cinematic .skip-cutscene { display: block; }
 .fps { position: absolute; left: 8px; bottom: 8px; font: 12px monospace; color: #9f9; display: none; }
 .fps.show { display: block; }
+
+.warning {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  transform: translateX(-50%) scale(0.9);
+  padding: 10px 20px;
+  border-radius: 12px;
+  background: rgba(160, 20, 10, 0.85);
+  border: 2px solid #ffb199;
+  font-size: calc(26px * var(--text-scale));
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.warning.show { opacity: 1; transform: translateX(-50%) scale(1); }
+.bell-caption {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(10, 14, 18, 0.8);
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.bell-caption.show { opacity: 1; }
+.meter-bar {
+  position: absolute;
+  left: 50%;
+  top: max(64px, calc(env(safe-area-inset-top) + 56px));
+  width: min(260px, 50vw);
+  height: 12px;
+  margin-left: calc(min(260px, 50vw) / -2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  display: none;
+}
+.meter-bar.show { display: block; }
+.meter-bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: #ffd166; }
+.meter-bar.spotted span { background: linear-gradient(90deg, #ffd166, #ff5a4e); }
+.meter-bar.jeep span { background: #3ecf8e; }
+.meter-bar em { position: absolute; left: 0; right: 0; top: 14px; text-align: center; font-style: normal; font-size: var(--fs-small); color: var(--ink-dim); }
+
+/* ---------- Portrait (phone held upright) ---------- */
+@media (orientation: portrait) {
+  /* Ammo drops below the objective instead of sharing the top row with it. */
+  .ammo { top: auto; right: auto; left: max(16px, env(safe-area-inset-left)); bottom: auto; margin-top: 0; }
+  .hud .ammo { top: max(70px, calc(env(safe-area-inset-top) + 62px)); }
+  .objective { max-width: calc(100vw - 150px); }
+  .checkpoint { top: max(110px, calc(env(safe-area-inset-top) + 102px)); right: max(16px, env(safe-area-inset-right)); }
+  .toasts { bottom: 44%; max-width: 55vw; }
+  .hint { bottom: 44%; max-width: 40vw; }
+  .prompt { bottom: 50%; white-space: normal; max-width: 80vw; text-align: center; }
+  body.touch .prompt { left: 50%; }
+  body.touch.layout-oneHandedLeft .prompt { left: 50%; }
+  .balance { bottom: 50%; }
+  .warning { top: 30%; font-size: calc(20px * var(--text-scale)); white-space: normal; text-align: center; max-width: 90vw; }
+  .meter-bar { top: max(150px, calc(env(safe-area-inset-top) + 142px)); }
+  /* Subtitles and tutorials sit in the middle band, above the controls. */
+  body.touch .hud:not(.cinematic) .subtitles,
+  body.touch.layout-oneHandedLeft .hud:not(.cinematic) .subtitles { left: 50%; right: auto; transform: translateX(-50%); width: calc(100vw - 32px); text-align: center; bottom: 60%; }
+  body.touch .hud .tutorial,
+  body.touch.layout-oneHandedLeft .hud .tutorial { left: 50%; right: auto; transform: translateX(-50%); width: calc(100vw - 32px); top: max(120px, calc(env(safe-area-inset-top) + 112px)); text-align: center; }
+  /* Two-thumb layout: the left of the screen above the stick is free, so subtitles go there
+     and never cover the tutorial card. */
+  body.touch.layout-standard .hud:not(.cinematic) .subtitles { left: max(12px, env(safe-area-inset-left)); transform: none; width: 60vw; text-align: left; bottom: 26%; }
+  .cinematic .letterbox { height: 18vh; }
+  .cinematic .subtitles { bottom: 20vh; }
+}

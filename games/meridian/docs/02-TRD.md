@@ -7,9 +7,12 @@
 | 3D engine | Babylon.js 9 (`@babylonjs/core`, tree-shaken imports) | Mature WebGL/WebGPU renderer with shadows, post-processing and thin instances |
 | Build | Vite 8 | Fast dev server; bundles to static files |
 | Tests | Vitest (unit, headless simulation) and Playwright (browser smoke test) | The game's logic runs without a GPU, so most behaviour is unit-tested |
-| Distribution | Progressive Web App (manifest + service worker) | Installs to the home screen and plays offline; can be wrapped later with Capacitor for app stores |
+| Distribution | Progressive Web App (manifest + service worker) **and** Capacitor 8 native apps (Android, iOS) | One web build ships as a website, an installed web app and store apps |
+| Native bridge | `@capacitor/app`, `haptics`, `status-bar`, `splash-screen` (`src/platform/native.ts`) | Back button, haptic engine, full screen; every call falls back to web APIs |
+| Models (optional) | `@babylonjs/loaders` glTF, prepared with `@gltf-transform/cli` (`npm run assets`) | Real models replace procedural ones slot by slot; no decoders needed |
+| CI | GitHub Actions: Android debug APK (+ signed AAB with secrets), iOS simulator compile | Builds the phone apps on machines that have the SDKs |
 | Storage | IndexedDB (in-memory fallback) | Saves and settings survive reloads; works offline |
-| Audio | Web Audio API, fully synthesised | No audio files to license or download |
+| Audio | Web Audio API, fully synthesised: buses + convolution reverb per space, adaptive scheduled music, ambience beds | No audio files to license or download |
 | Speech | Web Speech API | Menu narration and optional spoken dialogue |
 
 C# (Unity) and native C++ were considered. They would need tools this project's environment does not have, and a web build reaches every phone without an app store. The simulation is engine-independent, so it could be ported later.
@@ -38,8 +41,10 @@ Key rule: **the simulation never knows how it is drawn.** That is what makes eve
 ## Performance budgets
 | Budget | Target |
 |---|---|
-| Frame time | 16.6 ms (60 fps), 33 ms in battery mode |
-| Draw calls | Static level merged per material (under ~40 for static geometry) |
+| Frame time | 33 ms (30 fps, phone default), 16.6 ms at 60 fps; never below 20 fps on a 2021 mid-range phone |
+| Draw calls | ≤150 per frame (measured 30–95 across Ch1–7); static level merged per material; characters are 1 skinned mesh each |
+| Triangles | ≤300k visible (measured 5k–36k) |
+| Textures | Procedural, 256 px (Low/Medium) or 512 px (High/Ultra); models ≤1024 px |
 | JS bundle | ~330 KB gzipped |
 | Memory | Under 300 MB on a mid-range phone |
 | Enemies | Sleep when more than 90 m away and unaware |
@@ -47,7 +52,9 @@ Key rule: **the simulation never knows how it is drawn.** That is what makes eve
 ## Platforms
 - iOS Safari 16+, Android Chrome 110+, desktop Chrome/Edge/Firefox/Safari.
 - Requires WebGL 2. Falls back to a friendly error message if it is unavailable.
-- Landscape is recommended; portrait works.
+- Portrait and landscape are both fully supported (camera FOV, HUD and touch layouts adapt).
+- Android 7+ (API 24) and iOS 15+ via Capacitor; full screen, both orientations.
+- Quality tiers Low / Medium / High / Ultra (`src/render/Quality.ts`); see `docs/realistic-art-on-phones.md`.
 
 ## Security and privacy
 - No network calls, accounts, analytics or ads. Saves stay on the device.
@@ -61,4 +68,7 @@ npm run build      # typecheck + production build into dist/
 npm test           # unit tests (simulation, saves, input, chapter routes)
 npm run preview    # serve dist/ on :4173
 npm run e2e        # browser smoke test (needs preview running)
+npm run assets     # optimise models in assets-src/ into public/assets/
+npm run cap:sync   # build and copy into the Android/iOS projects
+npm run android:open / ios:open   # open in Android Studio / Xcode
 ```

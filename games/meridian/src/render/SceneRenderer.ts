@@ -1,6 +1,10 @@
 // Draws the GameSim with Babylon.js. The renderer only reads simulation state; it never changes it.
-// Static level geometry is merged per material for few draw calls; moving things (player,
-// enemies, crates, effects) are synced every frame from the simulation.
+// Static level geometry is merged per material for few draw calls; moving things (characters,
+// vehicles, crates, moving platforms, effects) are synced every frame from the simulation.
+//
+// Look: physically based materials painted from noise (render/materials/ProceduralPBR.ts),
+// a gradient sky, ACES tone mapping, a sun with shadows, and skinned procedural characters.
+// Every costly feature is switched by the quality tier table in render/Quality.ts.
 
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
@@ -8,43 +12,59 @@ import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
+import { CascadedShadowGenerator } from "@babylonjs/core/Lights/Shadows/cascadedShadowGenerator";
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
 import "@babylonjs/core/Rendering/outlineRenderer";
+import "@babylonjs/core/Rendering/depthRendererSceneComponent";
+import "@babylonjs/core/Rendering/geometryBufferRendererSceneComponent";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
+import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
+import { SSAO2RenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline";
+import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent";
+import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3, Vector4 } from "@babylonjs/core/Maths/math.vector";
 
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { lookDir, type V3 } from "../sim/math";
+import { fovForAspect } from "../sim/player/CameraRig";
 import type { BoxDef, Material as MatName } from "../sim/world/types";
 import type { RuntimeBox } from "../sim/world/World";
 import type { Enemy } from "../sim/ai/Enemy";
+import type { Pursuer } from "../sim/vehicle/Vehicle";
+import type { PlayerMode } from "../sim/player/PlayerController";
 import type { Settings } from "../core/Settings";
-import { MATERIAL_COLORS, HIGH_CONTRAST_ENV, PALETTE, climbTexture, flatMaterial, gridTexture } from "./greybox";
+import { HIGH_CONTRAST_ENV, PALETTE, climbTexture, flatMaterial, gridTexture } from "./greybox";
 import { ColorPostProcess } from "./ColorPostProcess";
+import { TIERS, autoTier, type Tier, type TierSpec } from "./Quality";
+import { proceduralPBR } from "./materials/ProceduralPBR";
+import { createSky, luminance } from "./Sky";
+import { createWaterMaterial } from "./WaterShader";
+import { Figure, OUTFITS, outfitFor, type Anim, type Outfit } from "./Figure";
+import { bellMesh, jeepMesh } from "./meshUtil";
+import { Hazards, Scrolling, Searchlights, Weather } from "./SetPieces";
+import { AssetSwap } from "./assets/AssetLibrary";
 
 const v = (p: V3) => new Vector3(p.x, p.y, p.z);
-
-interface Figure {
-  root: TransformNode;
-  body: Mesh;
-  head: Mesh;
-  armL: Mesh;
-  armR: Mesh;
-  gun: Mesh;
-  mat: StandardMaterial;
-}
 
 interface EnemyVisual {
   fig: Figure;
   meter: Mesh;
   meterMat: StandardMaterial;
   laser: Mesh;
-  baseColor: Color3;
+  last: Vector3;
+  speed: number;
+}
+
+interface PursuerVisual {
+  jeep: Mesh;
+  gunner: Figure;
+  driver: Figure;
 }
 
 interface Fx {
@@ -54,26 +74,42 @@ interface Fx {
   kind: "tracer" | "flash" | "explosion" | "spark";
 }
 
+/** Bram: Ines's mentor, who rides along in the Ch4 jeep. */
+const BRAM: Outfit = { skin: "#5b3a26", top: "#3d5a73", bottom: "#4a4538", boots: "#2a2118", hair: "#bdb7ab", accent: "#c9a447", bulk: 0.06 };
+
 export class SceneRenderer {
   readonly engine: Engine;
   scene: Scene | null = null;
   private camera: UniversalCamera | null = null;
   private color: ColorPostProcess | null = null;
   private shadows: ShadowGenerator | null = null;
+  private sun: DirectionalLight | null = null;
   private sim: GameSim | null = null;
-  private envMats = new Map<string, StandardMaterial>();
+  private tier: TierSpec = TIERS.medium;
+  private envMats = new Map<string, PBRMaterial | StandardMaterial>();
   private dynamicBoxes = new Map<string, Mesh>();
+  private moverGroups = new Set<string>();
   private falling: Array<{ mesh: Mesh; vy: number; t: number }> = [];
   private crateMeshes: Mesh[] = [];
   private ledgeMeshes = new Map<string, Mesh>();
   private pickupMeshes = new Map<string, Mesh>();
   private treasureMeshes = new Map<string, Mesh>();
   private interactMeshes = new Map<string, Mesh>();
+  private bellMeshes = new Map<string, { mesh: Mesh; swing: number; flash: number }>();
   private dropMeshes = new Map<string, Mesh>();
   private pillarFaces = new Map<string, StandardMaterial>();
   private ropeMeshes = new Map<string, Mesh>();
   private player: Figure | null = null;
+  private bram: Figure | null = null;
+  private jeep: Mesh | null = null;
+  private jeepParked: { pos: Vector3; yaw: number } | null = null;
   private enemies = new Map<string, EnemyVisual>();
+  private pursuers = new Map<string, PursuerVisual>();
+  private searchlights: Searchlights | null = null;
+  private hazards: Hazards | null = null;
+  private scrolling: Scrolling | null = null;
+  private weather: Weather | null = null;
+  private baseFog = 0;
   private projectileMeshes: Mesh[] = [];
   private arcDots: Mesh[] = [];
   private fx: Fx[] = [];
@@ -85,6 +121,7 @@ export class SceneRenderer {
   private baseScaling = 1;
   scaling = 1;
   private fpsWindow: number[] = [];
+  private instrumentation: SceneInstrumentation | null = null;
 
   constructor(canvas: HTMLCanvasElement, settings: () => Settings) {
     this.settings = settings;
@@ -93,72 +130,135 @@ export class SceneRenderer {
     window.addEventListener("resize", () => this.engine.resize());
   }
 
-  /** Low/medium/high quality. "auto" guesses from the device. */
+  /** Applies the quality tier's resolution. "Auto" guesses from the device. */
   applyQuality(): void {
-    const q = this.resolvedQuality();
-    const dpr = Math.min(window.devicePixelRatio || 1, q === "high" ? 2 : q === "medium" ? 1.5 : 1);
+    this.tier = TIERS[this.resolvedQuality()];
+    const dpr = Math.min(window.devicePixelRatio || 1, this.tier.maxDpr);
     this.baseScaling = 1 / dpr;
     this.scaling = this.baseScaling;
     this.engine.setHardwareScalingLevel(this.scaling);
   }
 
-  resolvedQuality(): "low" | "medium" | "high" {
+  resolvedQuality(): Tier {
     const q = this.settings().video.quality;
     if (q !== "auto") return q;
-    const cores = navigator.hardwareConcurrency || 4;
-    const mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-    if (mobile) return cores >= 8 ? "medium" : "low";
-    return cores >= 8 ? "high" : "medium";
+    return autoTier(navigator.hardwareConcurrency || 4, /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent));
   }
 
   // ------------------------------------------------------------------ level construction
 
   load(sim: GameSim): void {
     this.dispose();
+    this.applyQuality();
     this.sim = sim;
+    const tier = this.tier;
     const scene = new Scene(this.engine);
     this.scene = scene;
     scene.skipPointerMovePicking = true;
+    if (new URLSearchParams(location.search).has("debug")) this.instrumentation = new SceneInstrumentation(scene);
     const sky = sim.world.data.sky;
-    scene.clearColor = Color4.FromHexString(sky.top + "ff");
+    const night = luminance(sky.top) < 0.25;
+    scene.clearColor = Color4.FromHexString(sky.fog + "ff");
     scene.fogMode = Scene.FOGMODE_EXP2;
+    this.baseFog = sky.fogDensity;
     scene.fogDensity = sky.fogDensity;
     scene.fogColor = Color3.FromHexString(sky.fog);
     scene.ambientColor = new Color3(0.3, 0.3, 0.3);
+
+    // Filmic tone mapping: bright skies roll off softly instead of clipping.
+    const ip = scene.imageProcessingConfiguration;
+    ip.toneMappingEnabled = true;
+    ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+    ip.exposure = night ? 1.35 : 1.05;
+    ip.contrast = 1.12;
 
     const cam = new UniversalCamera("cam", new Vector3(0, 2, -5), scene);
     cam.minZ = 0.08;
     cam.maxZ = 600;
     cam.inputs.clear();
     this.camera = cam;
-    this.color = new ColorPostProcess(cam);
 
+    const sunDir = night ? new Vector3(0.35, -0.8, 0.45).normalize() : new Vector3(-0.45, -0.85, 0.35).normalize();
     const hemi = new HemisphericLight("hemi", new Vector3(0.2, 1, 0.1), scene);
-    hemi.intensity = 0.75;
-    hemi.groundColor = Color3.FromHexString(sky.bottom).scale(0.5);
-    const sun = new DirectionalLight("sun", new Vector3(-0.45, -1, 0.35), scene);
-    sun.intensity = 0.95;
-    sun.position = new Vector3(40, 80, -40);
-    if (this.resolvedQuality() !== "low") {
-      this.shadows = new ShadowGenerator(this.resolvedQuality() === "high" ? 2048 : 1024, sun);
-      this.shadows.useBlurExponentialShadowMap = this.resolvedQuality() === "high";
-      this.shadows.bias = 0.002;
+    hemi.intensity = night ? 0.55 : 0.85;
+    hemi.diffuse = Color3.FromHexString(sky.top).scale(0.5).add(new Color3(0.5, 0.5, 0.5));
+    hemi.groundColor = Color3.FromHexString(sky.bottom).scale(0.45);
+    const sun = new DirectionalLight("sun", sunDir, scene);
+    sun.intensity = night ? 1.1 : 2.6;
+    sun.diffuse = night ? new Color3(0.62, 0.72, 1) : new Color3(1, 0.93, 0.82);
+    sun.position = sunDir.scale(-80);
+    this.sun = sun;
+    createSky(scene, { top: sky.top, horizon: sky.fog, bottom: sky.bottom }, sunDir, night);
+
+    if (tier.shadows !== "blob") {
+      if (tier.shadows === "cascaded") {
+        const csm = new CascadedShadowGenerator(2048, sun);
+        csm.numCascades = 3;
+        csm.lambda = 0.85;
+        csm.shadowMaxZ = 120;
+        csm.usePercentageCloserFiltering = true;
+        this.shadows = csm;
+      } else {
+        const sg = new ShadowGenerator(tier.shadows === "pcf2048" ? 2048 : 1024, sun);
+        sg.usePercentageCloserFiltering = true;
+        sg.filteringQuality = tier.shadows === "pcf2048" ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW;
+        // A tight shadow box that follows the player keeps shadows sharp on big levels.
+        sun.autoUpdateExtends = false;
+        sun.shadowFrustumSize = 70;
+        sun.shadowMinZ = 1;
+        sun.shadowMaxZ = 200;
+        this.shadows = sg;
+      }
+      this.shadows.bias = 0.0015;
+      this.shadows.normalBias = 0.02;
     }
 
-    this.buildEnvironment();
-    this.player = this.makeFigure("player", this.settings().a11y.highContrast ? PALETTE.playerHigh : PALETTE.player, 1.8);
+    if (tier.fxaa || tier.bloom) {
+      const pl = new DefaultRenderingPipeline("pipeline", false, scene, [cam]);
+      pl.fxaaEnabled = tier.fxaa;
+      pl.bloomEnabled = tier.bloom;
+      pl.bloomThreshold = 0.85;
+      pl.bloomWeight = 0.25;
+      pl.bloomKernel = 48;
+      pl.imageProcessingEnabled = true;
+    }
+    if (tier.ssao) {
+      const ssao = new SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.5, blurRatio: 0.5 }, [cam]);
+      ssao.radius = 1.6;
+      ssao.totalStrength = 1.1;
+      ssao.samples = 12;
+    }
+    // Colour-blind correction runs last so it sees the final image.
+    this.color = new ColorPostProcess(cam);
+
+    const swap = new AssetSwap();
+    this.buildEnvironment(swap);
+    const hc = this.settings().a11y.highContrast;
+    const ines = hc ? { ...OUTFITS.ines, top: PALETTE.playerHigh, bottom: PALETTE.playerHigh } : OUTFITS.ines;
+    this.player = this.makeFigure("player", ines, 1.8);
+    this.buildActOneVisuals(swap);
     this.applyAccessibility();
     this.revision = sim.world.revision;
+    void swap.apply(scene);
   }
 
-  private envMat(name: MatName | "hc"): StandardMaterial {
+  private makeFigure(name: string, outfit: Outfit, height: number): Figure {
+    const f = new Figure(this.scene!, name, outfit, height, this.tier.shadows === "blob");
+    this.shadows?.addShadowCaster(f.mesh);
+    return f;
+  }
+
+  private envMat(name: MatName | "hc"): PBRMaterial | StandardMaterial {
     const hc = this.settings().a11y.highContrast;
     const key = hc ? "hc" : name;
     let m = this.envMats.get(key);
     if (!m) {
-      m = new StandardMaterial(`env-${key}`, this.scene!);
-      m.diffuseTexture = gridTexture(this.scene!, hc ? HIGH_CONTRAST_ENV : MATERIAL_COLORS[name as MatName], `grid-${key}`);
-      m.specularColor = new Color3(0.04, 0.04, 0.04);
+      if (hc) {
+        const sm = new StandardMaterial(`env-${key}`, this.scene!);
+        sm.diffuseTexture = gridTexture(this.scene!, HIGH_CONTRAST_ENV, `grid-${key}`);
+        sm.specularColor = new Color3(0.04, 0.04, 0.04);
+        m = sm;
+      } else m = proceduralPBR(this.scene!, name as MatName, this.tier.textureSize);
       this.envMats.set(key, m);
     }
     return m;
@@ -168,7 +268,7 @@ export class SceneRenderer {
     const w = b.max.x - b.min.x;
     const h = b.max.y - b.min.y;
     const d = b.max.z - b.min.z;
-    // Face UVs scaled by face size so the 1 m grid tiles correctly on any box.
+    // Face UVs scaled by face size (metres) so textures tile at the same size on any box.
     const faceUV = [
       new Vector4(0, 0, w, h),
       new Vector4(0, 0, w, h),
@@ -182,17 +282,19 @@ export class SceneRenderer {
     return m;
   }
 
-  private buildEnvironment(): void {
+  private buildEnvironment(swap: AssetSwap): void {
     const sim = this.sim!;
     const scene = this.scene!;
     const data = sim.world.data;
     const staticByMat = new Map<string, Mesh[]>();
+    for (const mv of data.movers) this.moverGroups.add(mv.group);
     const isDynamic = (b: BoxDef) => !!b.group || b.hp !== undefined || b.explosive || b.hidden;
 
     for (const b of sim.world.boxes) {
       const mesh = this.boxMesh(b, b.id);
       if (b.explosive) {
-        mesh.material = flatMaterial(scene, `barrel-${b.id}`, "#c0392b", { emissive: 0.15 });
+        mesh.material = flatMaterial(scene, `barrel-${b.id}`, "#b8322a", { emissive: 0.08, specular: 0.3 });
+        swap.register("prop.barrel", mesh);
       } else mesh.material = this.envMat(b.material);
       mesh.receiveShadows = true;
       if (isDynamic(b)) {
@@ -210,7 +312,7 @@ export class SceneRenderer {
       const rise = r.max.y - r.min.y;
       const width = r.axis === "x" ? r.max.z - r.min.z : r.max.x - r.min.x;
       const slope = Math.hypot(len, rise);
-      const m = MeshBuilder.CreateBox(r.id, { width: r.axis === "x" ? slope : width, depth: r.axis === "z" ? slope : width, height: 0.2 }, scene);
+      const m = MeshBuilder.CreateBox(r.id, { width: r.axis === "x" ? slope : width, depth: r.axis === "z" ? slope : width, height: 0.2, faceUV: Array(6).fill(new Vector4(0, 0, width, slope)) }, scene);
       m.position.set((r.min.x + r.max.x) / 2, (r.min.y + r.max.y) / 2 - 0.1, (r.min.z + r.max.z) / 2);
       const ang = Math.atan2(rise, len) * r.dir;
       if (r.axis === "z") m.rotation.x = -ang;
@@ -226,6 +328,7 @@ export class SceneRenderer {
         merged.receiveShadows = true;
         merged.freezeWorldMatrix();
         merged.isPickable = false;
+        this.shadows?.addShadowCaster(merged);
       }
     }
 
@@ -261,29 +364,39 @@ export class SceneRenderer {
       }
     }
 
-    // Water surfaces.
-    const water = flatMaterial(scene, "water", PALETTE.water, { alpha: 0.55, specular: 0.6 });
-    for (const wv of data.water) {
-      const p = MeshBuilder.CreateGround(wv.id, { width: wv.max.x - wv.min.x, height: wv.max.z - wv.min.z }, scene);
-      p.position.set((wv.min.x + wv.max.x) / 2, wv.max.y - 0.02, (wv.min.z + wv.max.z) / 2);
-      p.material = water;
+    // Water surfaces: animated shader, no reflection pass.
+    if (data.water.length) {
+      const sky = data.sky;
+      const water = createWaterMaterial(scene, { deep: "#0f3a4a", shallow: "#2f7f8c", sky: sky.top, fog: sky.fog, fogDensity: sky.fogDensity }, this.sun!.direction);
+      for (const wv of data.water) {
+        const w = wv.max.x - wv.min.x;
+        const d = wv.max.z - wv.min.z;
+        const p = MeshBuilder.CreateGround(wv.id, { width: w, height: d, subdivisionsX: Math.min(40, Math.ceil(w / 2)), subdivisionsY: Math.min(40, Math.ceil(d / 2)) }, scene);
+        p.position.set((wv.min.x + wv.max.x) / 2, wv.max.y - 0.02, (wv.min.z + wv.max.z) / 2);
+        p.material = water;
+      }
     }
 
-    // Tall grass as thin-instanced blades.
+    // Tall grass (and scrub, juniper) as thin-instanced tapered blades.
     if (data.grass.length) {
-      const blade = MeshBuilder.CreateBox("blade", { width: 0.07, height: 1, depth: 0.07 }, scene);
-      blade.material = flatMaterial(scene, "grassMat", PALETTE.grass);
+      const blade = MeshBuilder.CreateCylinder("blade", { height: 1, diameterTop: 0, diameterBottom: 0.09, tessellation: 3 }, scene);
+      const gm = new PBRMaterial("grassMat", scene);
+      gm.albedoColor = Color3.FromHexString(PALETTE.grass).toLinearSpace();
+      gm.roughness = 0.85;
+      gm.metallic = 0;
+      gm.backFaceCulling = false;
+      blade.material = gm;
       let seed = 7;
       const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
       const mats: Matrix[] = [];
       for (const g of data.grass) {
         const area = (g.max.x - g.min.x) * (g.max.z - g.min.z);
         const h = g.max.y - g.min.y;
-        for (let i = 0; i < area * 7; i++) {
+        for (let i = 0; i < area * this.tier.grassDensity; i++) {
           const x = g.min.x + rnd() * (g.max.x - g.min.x);
           const z = g.min.z + rnd() * (g.max.z - g.min.z);
-          const s = h * (0.75 + rnd() * 0.35);
-          const q = Quaternion.FromEulerAngles((rnd() - 0.5) * 0.3, rnd() * Math.PI, (rnd() - 0.5) * 0.3);
+          const s = h * (0.7 + rnd() * 0.4);
+          const q = Quaternion.FromEulerAngles((rnd() - 0.5) * 0.4, rnd() * Math.PI, (rnd() - 0.5) * 0.4);
           mats.push(Matrix.Compose(new Vector3(1, s, 1), q, new Vector3(x, g.min.y + s / 2, z)));
         }
       }
@@ -303,25 +416,25 @@ export class SceneRenderer {
         beam.position = v(r.anchor).add(new Vector3(0, 0.9, 0));
         beam.material = this.envMat("wood");
       }
-      const rope = MeshBuilder.CreateBox(`rope-${r.id}`, { width: 0.05, height: 1, depth: 0.05 }, scene);
+      const rope = MeshBuilder.CreateCylinder(`rope-${r.id}`, { height: 1, diameter: 0.05, tessellation: 6 }, scene);
       rope.material = ropeMat;
       this.ropeMeshes.set(r.id, rope);
     }
     for (const z of data.ziplines) {
-      MeshBuilder.CreateTube(z.id, { path: [v(z.a), v(z.b)], radius: 0.035 }, scene).material = flatMaterial(scene, `zip-${z.id}`, "#444");
+      MeshBuilder.CreateTube(z.id, { path: [v(z.a), v(z.b)], radius: 0.035 }, scene).material = flatMaterial(scene, `zip-${z.id}`, "#444", { specular: 0.4 });
       const post = MeshBuilder.CreateBox(`zipPost-${z.id}`, { width: 0.2, height: 2.5, depth: 0.2 }, scene);
       post.position = v(z.a).add(new Vector3(0, -0.6, 0.2));
       post.material = this.envMat("wood");
     }
 
-    // Crates.
-    const crateMat = flatMaterial(scene, "crateMat", "#a06a36");
+    // Crates use the wood material.
     for (const c of sim.world.crates) {
       const m = this.boxMesh(c, c.id);
-      m.material = crateMat;
+      m.material = this.envMat("wood");
       this.shadows?.addShadowCaster(m);
       m.receiveShadows = true;
       this.crateMeshes.push(m);
+      swap.register("prop.crate", m);
     }
 
     // Pickups and treasures.
@@ -349,11 +462,11 @@ export class SceneRenderer {
       this.treasureMeshes.set(t.id, m);
     }
 
-    // Interactables: a floating marker, plus coloured faces for puzzle pillars.
+    // Interactables: a floating marker, plus props for pillars, levers, panels and bells.
     const markMat = flatMaterial(scene, "interactMark", PALETTE.interact, { emissive: 0.7 });
     for (const i of data.interacts) {
       const m = MeshBuilder.CreatePolyhedron(`mark-${i.id}`, { type: 1, size: 0.1 }, scene);
-      m.position = v(i.pos).add(new Vector3(0, 0.6, 0));
+      m.position = v(i.pos).add(new Vector3(0, i.kind === "bell" ? 1.5 : 0.6, 0));
       m.material = markMat;
       this.interactMeshes.set(i.id, m);
       if (i.kind === "pillar") {
@@ -363,11 +476,25 @@ export class SceneRenderer {
         face.material = fm;
         this.pillarFaces.set(i.id, fm);
       }
-      if (i.kind === "lever") {
+      if (i.kind === "lever" || i.kind === "valve") {
         const h = MeshBuilder.CreateCylinder(`lever-${i.id}`, { height: 0.8, diameter: 0.08 }, scene);
-        h.position = v(i.pos).add(new Vector3(0, 0.2, 0.6));
+        h.position = v(i.pos).add(new Vector3(0, 0.2, 0.3));
         h.rotation.x = 0.5;
-        h.material = flatMaterial(scene, `leverMat-${i.id}`, "#c0392b", { emissive: 0.3 });
+        h.material = flatMaterial(scene, `leverMat-${i.id}`, i.kind === "valve" ? "#c0392b" : "#b03a2e", { emissive: 0.3 });
+      }
+      if (i.kind === "panel") {
+        const box = MeshBuilder.CreateBox(`panel-${i.id}`, { width: 0.6, height: 0.8, depth: 0.2 }, scene);
+        box.position = v(i.pos);
+        box.material = flatMaterial(scene, `panelMat-${i.id}`, "#c7a23a", { emissive: 0.15, specular: 0.4 });
+      }
+      if (i.kind === "bell") {
+        const count = sim.chapter.script!.puzzles.find((p) => p.type === "bells" && p.bells.includes(i.id));
+        const index = count && count.type === "bells" ? count.bells.indexOf(i.id) : 0;
+        const bell = bellMesh(scene, `bell-${i.id}`, 1.25 - index * 0.15);
+        bell.position = v(i.pos).add(new Vector3(0, 1.3, 0));
+        this.shadows?.addShadowCaster(bell);
+        this.bellMeshes.set(i.id, { mesh: bell, swing: 0, flash: 0 });
+        swap.register("prop.bell", bell);
       }
     }
     for (const pz of sim.chapter.script!.puzzles) {
@@ -388,79 +515,54 @@ export class SceneRenderer {
     for (const m of this.envMats.values()) m.freeze();
   }
 
-  // ------------------------------------------------------------------ characters
-
-  private makeFigure(name: string, color: string, height: number): Figure {
+  /** Jeeps, searchlights, tunnels, avalanches, train scenery and weather. */
+  private buildActOneVisuals(swap: AssetSwap): void {
+    const sim = this.sim!;
     const scene = this.scene!;
-    const s = height / 1.8;
-    const root = new TransformNode(name, scene);
-    const mat = flatMaterial(scene, `${name}-mat`, color);
-    const body = MeshBuilder.CreateCapsule(`${name}-body`, { height: 1.25 * s, radius: 0.27 * s }, scene);
-    body.parent = root;
-    body.position.y = 0.72 * s;
-    body.material = mat;
-    const head = MeshBuilder.CreateSphere(`${name}-head`, { diameter: 0.34 * s, segments: 8 }, scene);
-    head.parent = root;
-    head.position.y = 1.58 * s;
-    head.material = flatMaterial(scene, `${name}-headMat`, "#d9a77c");
-    const arm = (side: number) => {
-      const a = MeshBuilder.CreateBox(`${name}-arm${side}`, { width: 0.12 * s, height: 0.6 * s, depth: 0.12 * s }, scene);
-      a.setPivotPoint(new Vector3(0, 0.28 * s, 0));
-      a.parent = root;
-      a.position.set(0.33 * s * side, 1.08 * s, 0);
-      a.material = mat;
-      return a;
-    };
-    const armL = arm(-1);
-    const armR = arm(1);
-    const gun = MeshBuilder.CreateBox(`${name}-gun`, { width: 0.07, height: 0.12, depth: 0.45 }, scene);
-    gun.parent = armR;
-    gun.position.set(0, -0.3 * s, 0.18);
-    gun.material = flatMaterial(scene, `${name}-gunMat`, "#222");
-    for (const m of [body, head, armL, armR]) this.shadows?.addShadowCaster(m);
-    return { root, body, head, armL, armR, gun, mat };
+    const data = sim.world.data;
+    const vehicleSpot = data.interacts.find((i) => i.kind === "vehicle");
+    if (data.tracks.length) {
+      this.jeep = jeepMesh(scene, "jeep", "#5f6b3a", false);
+      this.shadows?.addShadowCaster(this.jeep);
+      swap.register("prop.jeep", this.jeep);
+      this.bram = this.makeFigure("bram", BRAM, 1.82);
+      const start = data.tracks[0].points[0];
+      this.jeepParked = { pos: vehicleSpot ? new Vector3(vehicleSpot.pos.x, start.y, vehicleSpot.pos.z + 1.5) : v(start), yaw: 0 };
+    }
+    if (sim.searchlights.length) this.searchlights = new Searchlights(scene, sim);
+    if (data.hazards.some((h) => h.kind !== "kill")) this.hazards = new Hazards(scene, sim, this.envMat("rock") as PBRMaterial);
+    if (data.scroll) {
+      const zs = data.boxes.map((b) => (b.min.z + b.max.z) / 2);
+      const centre = (Math.min(...zs) + Math.max(...zs)) / 2;
+      this.scrolling = new Scrolling(scene, data.scroll.speed, proceduralPBR(scene, "rock", this.tier.textureSize), centre);
+    }
+    if (data.weather.length) this.weather = new Weather(scene, this.tier.particles);
   }
+
+  // ------------------------------------------------------------------ characters
 
   private enemyVisual(e: Enemy): EnemyVisual {
     let ev = this.enemies.get(e.id);
     if (ev) return ev;
     const scene = this.scene!;
     const hc = this.settings().a11y.highContrast;
-    const fig = this.makeFigure(`enemy-${e.id}`, hc ? PALETTE.enemyHigh : e.def.color, e.def.height);
+    const base = outfitFor(e.def.id);
+    const outfit = hc ? { ...base, top: PALETTE.enemyHigh, bottom: PALETTE.enemyHigh } : base;
+    const fig = this.makeFigure(`enemy-${e.id}`, outfit, e.def.height);
     if (!e.weapon) fig.gun.setEnabled(false);
     const meterMat = flatMaterial(scene, `meter-${e.id}`, "#ffd400", { emissive: 1 });
     meterMat.disableLighting = true;
     const meter = MeshBuilder.CreatePlane(`meterPlane-${e.id}`, { width: 0.6, height: 0.09 }, scene);
     meter.billboardMode = Mesh.BILLBOARDMODE_ALL;
     meter.material = meterMat;
-    meter.parent = fig.root;
-    meter.position.y = e.def.height + 0.35;
     const laser = MeshBuilder.CreateBox(`laser-${e.id}`, { width: 0.02, height: 0.02, depth: 1 }, scene);
     const lm = flatMaterial(scene, `laserMat-${e.id}`, PALETTE.laser, { emissive: 1, alpha: 0.7 });
     lm.disableLighting = true;
     laser.material = lm;
     laser.setEnabled(false);
-    ev = { fig, meter, meterMat, laser, baseColor: Color3.FromHexString(hc ? PALETTE.enemyHigh : e.def.color) };
+    ev = { fig, meter, meterMat, laser, last: v(e.pos), speed: 0 };
     this.enemies.set(e.id, ev);
     return ev;
-  }
-
-  private poseFigure(f: Figure, o: { pos: V3; yaw: number; crouch: number; armsUp: boolean; aimPitch: number | null; roll: number; lie: number; swim: boolean }): void {
-    f.root.position.set(o.pos.x, o.pos.y, o.pos.z);
-    f.root.rotation.y = o.yaw;
-    f.root.rotation.x = o.lie * (Math.PI / 2) + o.roll;
-    f.root.scaling.y = 1 - o.crouch * 0.38;
-    if (o.swim) f.root.position.y += 0.3;
-    if (o.armsUp) {
-      f.armL.rotation.x = f.armR.rotation.x = Math.PI;
-    } else if (o.aimPitch !== null) {
-      f.armR.rotation.x = -Math.PI / 2 - o.aimPitch;
-      f.armL.rotation.x = -Math.PI / 2.4 - o.aimPitch;
-    } else {
-      const swing = Math.sin(this.time * 9) * 0.5;
-      f.armL.rotation.x = swing * (o.crouch ? 0.3 : 1);
-      f.armR.rotation.x = -swing * (o.crouch ? 0.3 : 1);
-    }
   }
 
   // ------------------------------------------------------------------ per-frame sync
@@ -471,9 +573,11 @@ export class SceneRenderer {
     if (!sim || !scene || !this.camera) return;
     this.time += dt;
     this.syncWorld(dt);
-    this.syncPlayer();
+    this.syncPlayer(dt);
     this.syncEnemies(dt);
-    this.syncProps();
+    this.syncVehicles(dt);
+    this.syncProps(dt);
+    this.syncSetPieces(dt);
     this.syncFx(dt);
     this.syncCamera(dt);
     scene.render();
@@ -498,6 +602,17 @@ export class SceneRenderer {
         if (m) m.setEnabled(!l.removed);
       }
     }
+    // Moving platforms: follow the simulation's boxes and ledges.
+    if (this.moverGroups.size) {
+      for (const b of sim.world.boxes) {
+        if (!b.group || !this.moverGroups.has(b.group)) continue;
+        this.dynamicBoxes.get(b.id)?.position.set((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2);
+      }
+      for (const l of sim.world.ledges) {
+        if (!l.group || !this.moverGroups.has(l.group)) continue;
+        this.ledgeMeshes.get(l.id)?.position.set((l.a.x + l.b.x) / 2 + l.normal.x * 0.035, l.a.y - 0.02, (l.a.z + l.b.z) / 2 + l.normal.z * 0.035);
+      }
+    }
     // Collapsing pieces fall and fade away.
     for (const f of this.falling) {
       f.t += dt;
@@ -513,62 +628,117 @@ export class SceneRenderer {
     });
   }
 
-  private syncPlayer(): void {
+  private playerAnim(mode: PlayerMode, aiming: boolean, speed: number, grounded: boolean): Anim {
+    if (aiming && mode !== "hang" && mode !== "rope") return "aim";
+    switch (mode) {
+      case "hang":
+      case "ledgeHop":
+      case "climbUp":
+        return "hang";
+      case "wall":
+        return "climb";
+      case "rope":
+        return "rope";
+      case "zip":
+        return "zip";
+      case "swim":
+        return "swim";
+      case "roll":
+        return "roll";
+      case "cover":
+        return "cover";
+      case "dead":
+        return "dead";
+      case "vehicle":
+        return "drive";
+      case "air":
+        return "air";
+      default:
+        return !grounded ? "air" : speed > 0.3 ? "move" : "idle";
+    }
+  }
+
+  private syncPlayer(dt: number): void {
     const sim = this.sim!;
     const p = sim.player;
     const f = this.player!;
     const visible = !(sim.aiming && sim.cam.scoped);
-    f.root.setEnabled(visible || !!sim.cutscene);
-    const crouch = (1.8 - p.height) / 0.7;
-    this.poseFigure(f, {
-      pos: p.pos,
-      yaw: p.yaw,
-      crouch: p.mode === "roll" ? 0.8 : Math.max(0, Math.min(1, crouch)),
-      armsUp: ["hang", "rope", "zip", "wall", "ledgeHop"].includes(p.mode) && !sim.aiming,
-      aimPitch: sim.aiming || sim.throwAiming ? sim.cam.pitch : null,
-      roll: p.mode === "roll" ? (1 - p.rollTimer / 0.55) * Math.PI * 2 : 0,
+    f.setEnabled(visible || !!sim.cutscene);
+    const speed = Math.hypot(p.vel.x, p.vel.z);
+    let anim = this.playerAnim(p.mode, sim.aiming || sim.throwAiming, speed, p.grounded);
+    let pos: V3 = p.pos;
+    let yaw = p.yaw;
+    // In the jeep the figure sits in a seat (driving) or stands at the back (gunner).
+    if (p.mode === "vehicle" && sim.vehicle && this.jeep) {
+      const gunner = sim.vehicle.track.def.mode === "gunner";
+      pos = this.seat(gunner ? 0 : -0.45, gunner ? 0.78 : 0.55, gunner ? -1.2 : 0.1);
+      yaw = gunner ? sim.cam.yaw : this.jeep.rotation.y;
+      anim = gunner ? (sim.aiming ? "aim" : "idle") : "drive";
+    }
+    f.update(dt, {
+      pos,
+      yaw,
+      anim,
+      speed: p.mode === "vehicle" ? 0 : speed,
+      crouch: Math.max(0, Math.min(1, (1.8 - p.height) / 0.7)),
+      aimPitch: sim.cam.pitch,
       lie: p.mode === "dead" ? 1 : 0,
-      swim: p.mode === "swim",
+      roll: p.mode === "roll" ? (1 - p.rollTimer / 0.55) * Math.PI * 2 : 0,
+      oneHanded: p.mode === "hang" || p.mode === "rope",
     });
-    if (sim.aiming && (p.mode === "hang" || p.mode === "rope")) f.armL.rotation.x = Math.PI;
-    f.gun.setEnabled(!!sim.activeWeapon() && (sim.aiming || p.mode === "cover" || sim.inCombat));
+    f.gun.setEnabled(!!sim.activeWeapon() && (sim.aiming || p.mode === "cover" || sim.inCombat || (p.mode === "vehicle" && sim.vehicle?.track.def.mode === "gunner")));
+  }
+
+  /** A point on the jeep in local seat coordinates (x right, y up, z forward). */
+  private seat(x: number, y: number, z: number): V3 {
+    const j = this.jeep!;
+    const yaw = j.rotation.y;
+    return { x: j.position.x + Math.cos(yaw) * x + Math.sin(yaw) * z, y: j.position.y + y, z: j.position.z - Math.sin(yaw) * x + Math.cos(yaw) * z };
   }
 
   private syncEnemies(dt: number): void {
     const sim = this.sim!;
+    const camPos = this.camera!.position;
     for (const e of sim.enemies) {
       const ev = this.enemyVisual(e);
       const f = ev.fig;
       if (!e.alive && e.deadTime > 10) {
-        f.root.setEnabled(false);
+        f.setEnabled(false);
+        ev.meter.setEnabled(false);
         ev.laser.setEnabled(false);
         continue;
       }
-      this.poseFigure(f, {
-        pos: e.pos,
-        yaw: e.yaw,
-        crouch: e.crouching ? 1 : 0,
-        armsUp: false,
-        aimPitch: e.alive && e.state === "combat" && e.weapon ? 0 : null,
-        roll: 0,
-        lie: e.alive ? (e.state === "stunned" ? 0.25 : 0) : Math.min(1, e.deadTime * 3),
-        swim: false,
-      });
+      const now = v(e.pos);
+      ev.speed = dt > 0 ? Math.min(8, Vector3.Distance(now, ev.last) / dt) : 0;
+      ev.last.copyFrom(now);
+      // Far-away characters hold their pose to save time on phones.
+      if (Vector3.Distance(now, camPos) < this.tier.animDistance || !e.alive) {
+        const anim: Anim = !e.alive ? "dead" : e.state === "stunned" ? "stunned" : e.state === "combat" && e.weapon && ev.speed < 0.5 ? "aim" : ev.speed > 0.3 ? "move" : "idle";
+        f.update(dt, {
+          pos: e.pos,
+          yaw: e.yaw,
+          anim,
+          speed: ev.speed,
+          crouch: e.crouching ? 1 : 0,
+          aimPitch: 0,
+          lie: e.alive ? 0 : Math.min(1, e.deadTime * 3),
+          roll: 0,
+        });
+      }
       // Flash white during a melee wind-up (counter cue), red when hit.
       const flash = e.counterable ? 0.9 : e.hitFlash > 0 ? 0.6 : 0;
       f.mat.emissiveColor = e.counterable ? new Color3(flash, flash, flash) : new Color3(flash, flash * 0.1, flash * 0.1);
-      const tagged = e.tagged && e.alive;
-      for (const m of [f.body, f.head]) {
-        m.renderOutline = tagged;
-        if (tagged) {
-          m.outlineColor = new Color3(1, 0.85, 0.2);
-          m.outlineWidth = 0.03;
-        }
+      const tagged = e.alive && e.tagged;
+      f.mesh.renderOutline = tagged;
+      if (tagged) {
+        f.mesh.outlineColor = new Color3(1, 0.85, 0.2);
+        f.mesh.outlineWidth = 0.03;
       }
       // Suspicion meter above the head.
       const showMeter = e.alive && ((e.suspicion > 0.05 && !e.aware) || (e.aware && e.sinceSeen < 1.5 && e.reactTimer > 0));
       ev.meter.setEnabled(showMeter);
       if (showMeter) {
+        ev.meter.position.set(e.pos.x, e.pos.y + e.def.height + 0.35, e.pos.z);
         const s = Math.min(1, e.suspicion);
         ev.meter.scaling.x = Math.max(0.05, s);
         ev.meterMat.emissiveColor = e.aware ? new Color3(1, 0.1, 0.1) : new Color3(1, 1 - s * 0.6, 0.1);
@@ -587,10 +757,76 @@ export class SceneRenderer {
         ev.laser.scaling.x = ev.laser.scaling.y = 1 + k * 3;
       }
     }
-    void dt;
   }
 
-  private syncProps(): void {
+  private syncVehicles(dt: number): void {
+    const sim = this.sim!;
+    const j = this.jeep;
+    if (!j) return;
+    const veh = sim.vehicle;
+    if (veh) {
+      j.position.set(veh.pos.x, veh.pos.y, veh.pos.z);
+      j.rotation.y = veh.yaw;
+    } else if (this.jeepParked) {
+      j.position.copyFrom(this.jeepParked.pos);
+      j.rotation.y = this.jeepParked.yaw;
+    }
+    // Bram rides along: passenger while Ines drives, driver once she takes the gun.
+    const bram = this.bram!;
+    const riding = sim.riding;
+    bram.setEnabled(riding);
+    if (riding) {
+      const gunner = veh!.track.def.mode === "gunner";
+      bram.update(dt, { pos: this.seat(gunner ? -0.45 : 0.45, 0.55, 0.1), yaw: j.rotation.y, anim: "drive", speed: 0, crouch: 0, aimPitch: 0, lie: 0, roll: 0 });
+    }
+    // Enemy jeeps, each with a driver and a gunner on the back.
+    for (const pu of sim.pursuers) {
+      let pv = this.pursuers.get(pu.def.id);
+      if (!pv) pv = this.makePursuer(pu);
+      const show = pu.alive && riding;
+      pv.jeep.setEnabled(show);
+      pv.gunner.setEnabled(show);
+      pv.driver.setEnabled(show);
+      if (!show) continue;
+      pv.jeep.position.set(pu.pos.x, pu.pos.y, pu.pos.z);
+      pv.jeep.rotation.y = pu.yaw;
+      const local = (x: number, y: number, z: number): V3 => ({ x: pu.pos.x + Math.cos(pu.yaw) * x + Math.sin(pu.yaw) * z, y: pu.pos.y + y, z: pu.pos.z - Math.sin(pu.yaw) * x + Math.cos(pu.yaw) * z });
+      const toPlayer = Math.atan2(sim.player.pos.x - pu.pos.x, sim.player.pos.z - pu.pos.z);
+      pv.gunner.update(dt, { pos: local(0, 0.78, -1.2), yaw: toPlayer, anim: "aim", speed: 0, crouch: 0, aimPitch: 0, lie: 0, roll: 0 });
+      pv.driver.update(dt, { pos: local(-0.45, 0.55, 0.1), yaw: pu.yaw, anim: "drive", speed: 0, crouch: 0, aimPitch: 0, lie: 0, roll: 0 });
+      pv.gunner.mat.emissiveColor = pu.hitFlash > 0 ? new Color3(0.6, 0.06, 0.06) : Color3.Black();
+    }
+  }
+
+  private makePursuer(pu: Pursuer): PursuerVisual {
+    const jeep = jeepMesh(this.scene!, `pjeep-${pu.def.id}`, "#7a3b22", true);
+    this.shadows?.addShadowCaster(jeep);
+    const pv = { jeep, gunner: this.makeFigure(`pgun-${pu.def.id}`, OUTFITS.rifleman, 1.8), driver: this.makeFigure(`pdrv-${pu.def.id}`, OUTFITS.shotgunner, 1.8) };
+    this.pursuers.set(pu.def.id, pv);
+    return pv;
+  }
+
+  private syncSetPieces(dt: number): void {
+    const sim = this.sim!;
+    this.searchlights?.sync(sim);
+    this.hazards?.sync(sim);
+    this.scrolling?.update(dt);
+    const w = sim.weather;
+    if (this.weather) {
+      this.weather.set(w);
+      this.weather.emitter.copyFrom(this.camera!.position);
+    }
+    // Weather thickens the fog smoothly.
+    const want = this.baseFog + (w?.fog ?? 0);
+    this.scene!.fogDensity += (want - this.scene!.fogDensity) * Math.min(1, dt * 1.5);
+    // Keep the sharp shadow box centred on the player.
+    if (this.sun && this.shadows && !(this.shadows instanceof CascadedShadowGenerator)) {
+      const p = sim.player.pos;
+      this.sun.position.set(p.x - this.sun.direction.x * 80, p.y - this.sun.direction.y * 80, p.z - this.sun.direction.z * 80);
+    }
+  }
+
+  private syncProps(dt: number): void {
     const sim = this.sim!;
     const bob = Math.sin(this.time * 2.5) * 0.08;
     for (const [id, m] of this.pickupMeshes) {
@@ -610,8 +846,16 @@ export class SceneRenderer {
       sim.world.data.interacts.filter((i) => (!i.hidden || sim.revealedInteracts.has(i.id)) && !(i.once && sim.interactsUsed.has(i.id))).map((i) => i.id),
     );
     for (const [id, m] of this.interactMeshes) {
-      m.setEnabled(visible.has(id));
+      m.setEnabled(visible.has(id) && !(sim.riding && sim.world.data.interacts.find((i) => i.id === id)?.kind === "vehicle"));
       m.rotation.y = this.time * 2;
+    }
+    // Bells swing and glow when rung.
+    for (const b of this.bellMeshes.values()) {
+      b.swing = Math.max(0, b.swing - dt * 0.8);
+      b.flash = Math.max(0, b.flash - dt * 1.5);
+      b.mesh.rotation.x = Math.sin(this.time * 7) * 0.35 * b.swing;
+      const mat = b.mesh.material as PBRMaterial;
+      mat.emissiveColor = new Color3(1, 0.8, 0.35).scale(b.flash * 0.8);
     }
     const faceColors = ["#f2c94c", "#f5f5f5", "#4aa3ff", "#3ecf8e"];
     for (const pz of sim.puzzles) {
@@ -736,6 +980,22 @@ export class SceneRenderer {
       this.shake = Math.max(this.shake, ev.amount);
     } else if (ev.type === "playerHurt") {
       this.shake = Math.max(this.shake, 0.15);
+    } else if (ev.type === "bell") {
+      let best: { mesh: Mesh; swing: number; flash: number } | null = null;
+      let bestD = Infinity;
+      for (const b of this.bellMeshes.values()) {
+        const d = Vector3.Distance(b.mesh.position, v(ev.pos));
+        if (d < bestD) {
+          bestD = d;
+          best = b;
+        }
+      }
+      if (best) {
+        best.swing = 1;
+        best.flash = 1;
+      }
+    } else if (ev.type === "vehicle" && ev.kind === "exit" && this.jeep) {
+      this.jeepParked = { pos: this.jeep.position.clone(), yaw: this.jeep.rotation.y };
     }
   }
 
@@ -764,13 +1024,13 @@ export class SceneRenderer {
     if (sim.cam.rail) {
       cam.position = v(sim.cam.rail.position);
       cam.setTarget(v(sim.cam.rail.target));
-      cam.fov = 0.9;
+      cam.fov = fovForAspect(0.9, this.engine.getAspectRatio(cam));
       return;
     }
     cam.position = v(sim.cam.position).add(jitter);
     const dir = lookDir(sim.cam.yaw, sim.cam.pitch);
     cam.setTarget(cam.position.add(new Vector3(dir.x, dir.y, dir.z)));
-    cam.fov = sim.cam.fov;
+    cam.fov = fovForAspect(sim.cam.fov, this.engine.getAspectRatio(cam));
   }
 
   private dynamicResolution(): void {
@@ -793,23 +1053,45 @@ export class SceneRenderer {
     this.color?.set(s.a11y.colorblind, s.a11y.colorblindStrength, s.video.brightness);
   }
 
+  /** Draw-call and triangle counts, for the debug overlay and performance tests. */
+  stats(): { drawCalls: number; triangles: number; tier: Tier } {
+    const scene = this.scene;
+    let tris = 0;
+    if (scene) for (const m of scene.getActiveMeshes().data) tris += m.getTotalIndices() / 3;
+    return { drawCalls: this.instrumentation?.drawCallsCounter.current ?? 0, triangles: Math.round(tris), tier: this.resolvedQuality() };
+  }
+
   dispose(): void {
+    this.instrumentation?.dispose();
+    this.instrumentation = null;
     this.scene?.dispose();
     this.scene = null;
     this.camera = null;
     this.sim = null;
+    this.sun = null;
     this.envMats.clear();
     this.dynamicBoxes.clear();
+    this.moverGroups.clear();
     this.falling = [];
     this.crateMeshes = [];
     this.ledgeMeshes.clear();
     this.pickupMeshes.clear();
     this.treasureMeshes.clear();
     this.interactMeshes.clear();
+    this.bellMeshes.clear();
     this.dropMeshes.clear();
     this.pillarFaces.clear();
     this.ropeMeshes.clear();
     this.enemies.clear();
+    this.pursuers.clear();
+    this.player = null;
+    this.bram = null;
+    this.jeep = null;
+    this.jeepParked = null;
+    this.searchlights = null;
+    this.hazards = null;
+    this.scrolling = null;
+    this.weather = null;
     this.projectileMeshes = [];
     this.arcDots = [];
     this.fx = [];
