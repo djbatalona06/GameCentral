@@ -4,7 +4,7 @@ Meridian is one web build that ships three ways:
 
 | How | What players do | Built by |
 |---|---|---|
-| Website / installable web app (PWA) | Open the link, then "Add to Home Screen" | `npm run build`, then host the `dist/` folder anywhere |
+| Website / installable web app (PWA) | Open https://djbatalona06.github.io/GameCentral/, then "Add to Home Screen" ([iPhone guide](play-on-iphone.md)) | `.github/workflows/meridian-pages.yml` on every push to `main` (turn on once: Settings → Pages → Source: GitHub Actions) |
 | **Android app** (Google Play) | Install from Play | Capacitor project in `android/`, built by GitHub Actions |
 | **iPhone / iPad app** (App Store) | Install from the App Store | Capacitor project in `ios/`, needs a Mac (or GitHub's Mac runners) |
 

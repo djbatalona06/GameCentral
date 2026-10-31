@@ -10,6 +10,11 @@ Home to multiple games including Duck Hunt, Heartbeat, and Uncharted mobile (not
 
 ## Play Meridian
 
+**Play now in your browser:** https://djbatalona06.github.io/GameCentral/
+On an iPhone? Follow the [step-by-step iPhone guide](games/meridian/docs/play-on-iphone.md) to install it from Safari.
+
+To run it on your own computer:
+
 ```bash
 cd games/meridian
 npm install
