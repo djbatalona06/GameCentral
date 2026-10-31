@@ -78,7 +78,10 @@ export const OPTIONS: Option[] = [
   { tab: "audio", label: "Sound effects", type: "slider", min: 0, max: 1, step: 0.05, format: pct, get: (s) => s.audio.sfx, set: (s, v) => (s.audio.sfx = v as number) },
   { tab: "audio", label: "Voice", type: "slider", min: 0, max: 1, step: 0.05, format: pct, get: (s) => s.audio.voice, set: (s, v) => (s.audio.voice = v as number) },
   { tab: "audio", label: "Menu sounds", type: "slider", min: 0, max: 1, step: 0.05, format: pct, get: (s) => s.audio.ui, set: (s, v) => (s.audio.ui = v as number) },
+  { tab: "audio", label: "World sounds", desc: "Wind, sea, insects, the train.", type: "slider", min: 0, max: 1, step: 0.05, format: pct, get: (s) => s.audio.ambience, set: (s, v) => (s.audio.ambience = v as number) },
   { tab: "audio", label: "Mono audio", desc: "Plays everything in both ears.", type: "toggle", get: (s) => s.audio.mono, set: (s, v) => (s.audio.mono = v as boolean) },
+  { tab: "audio", label: "Lower music during dialogue", type: "toggle", get: (s) => s.audio.duck, set: (s, v) => (s.audio.duck = v as boolean) },
+  { tab: "audio", label: "Night mode", desc: "Evens out loud and quiet sounds so you can play at low volume.", type: "toggle", get: (s) => s.audio.nightMode, set: (s, v) => (s.audio.nightMode = v as boolean) },
 
   // Video
   { tab: "video", label: "Quality", desc: "Auto picks a level for your device. Applies on next level load.", type: "select", options: [{ value: "auto", label: "Auto" }, { value: "low", label: "Low (best battery)" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }, { value: "ultra", label: "Ultra (desktop)" }], get: (s) => s.video.quality, set: (s, v) => (s.video.quality = v as Settings["video"]["quality"]) },

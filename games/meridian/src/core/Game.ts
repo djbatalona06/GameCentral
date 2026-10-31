@@ -850,9 +850,10 @@ export class Game {
 
     if (sim) {
       this.audio.listener = { pos: sim.cam.position, yaw: sim.cam.yaw };
-      this.audio.update(dt, this.state === "playing" && sim.inCombat);
+      this.audio.update(dt, sim, this.state === "playing");
       this.hud.update(dt, sim, this.input.device as InputFrame["device"], this.renderer.engine.getFps());
     } else if (this.menuSim) {
+      this.audio.update(dt, null, false);
       // Slow orbit over the beach behind the menus.
       this.menuOrbit += dt * 0.05;
       const r = 26;

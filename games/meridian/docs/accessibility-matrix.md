@@ -43,13 +43,22 @@ Each feature is mapped to the **Xbox Accessibility Guidelines (XAG 101–118)** 
 | Pause anytime, including cutscenes; skippable cutscenes; auto-pause in background | Global | 116 Time limits | Basic |
 | Reduce motion, camera shake slider, field-of-view slider | A11y | 117 Visual distractions and motion settings | Basic/Intermediate |
 | No motion blur and no rapid full-screen flashing | Design | 118 Photosensitivity | Basic |
-| Separate volume sliders (master, music, SFX, voice, UI) and mono audio | Audio | 105 Audio accessibility | Basic/Intermediate |
+| Separate volume sliders (master, music, SFX, voice, UI, world sounds) and mono audio | Audio | 105 Audio accessibility | Basic/Intermediate |
 | Brightness slider | Video | 102 | Basic |
-| Battery mode (30 fps) and quality tiers | Video | — | — |
+| Battery mode (30 fps, the default on phones) and quality tiers Low/Medium/High/Ultra | Video | — | — |
+| Play in portrait or landscape; touch layouts and the layout editor remember each orientation separately | Global, Controls | 107 Input (flexible play positions) | Intermediate |
+| Bell puzzle: every note is shown on screen ("Bell 3 (middle)"), the bell swings and glows, and the journal writes the order down. Solvable with no sound at all | Ch5 | 103, 104 | Advanced: puzzles not reliant on audio |
+| Tunnel and avalanche warnings shown as a large on-screen banner (and spoken if voice lines are on), not just a sound | Ch5, Ch6 | 103 | Intermediate |
+| Searchlight "Spotted" meter and jeep condition bar show danger without relying on sound | Ch4, Ch7 | 103 | Intermediate |
+| Separate "World sounds" volume (wind, sea, train) | Audio | 105 | Intermediate |
+| Lower the music during dialogue (ducking) | Audio | 104, 105 | Intermediate |
+| Night mode: compresses loud peaks so quiet sounds stay audible at low volume | Audio | 105 | Intermediate |
+| Muffled sound through walls tells you where enemies are without seeing them; visual sound indicators still show direction | Audio, HUD | 103 | Intermediate |
+| Jeep driving uses only steer and gas (one thumb); a crash slows you rather than killing you outright | Ch4 | 107 Input, 112 Difficulty | Intermediate |
 
 ## Not yet covered (planned)
 | Gap | Guideline | Plan |
 |---|---|---|
 | Audio description of cutscenes | XAG 111 Audio description | Add described-video lines to cutscene data, read by text-to-speech |
-| Recorded voice acting (text-to-speech is used today) | XAG 104/105 | Audio pass, phase 12 |
+| Recorded voice acting (text-to-speech is used today) | XAG 104/105 | Needs voice actors; the audio graph already has a voice bus and ducking ready for it |
 | Sign-language or simplified-language subtitles | GAG Advanced | Content pass |

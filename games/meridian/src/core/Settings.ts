@@ -51,7 +51,20 @@ export interface Settings {
     tutorialHints: boolean;
     largeReticle: boolean;
   };
-  audio: { master: number; music: number; sfx: number; voice: number; ui: number; mono: boolean };
+  audio: {
+    master: number;
+    music: number;
+    sfx: number;
+    voice: number;
+    ui: number;
+    /** Wind, sea, insects, train: the world's background sound. */
+    ambience: number;
+    mono: boolean;
+    /** Lower the music while someone is talking. */
+    duck: boolean;
+    /** Squash loud peaks (explosions) so quiet sounds stay audible at low volume. */
+    nightMode: boolean;
+  };
   video: { quality: Quality; fpsCap: 30 | 60; dynamicResolution: boolean; showFps: boolean; brightness: number };
 }
 
@@ -93,7 +106,7 @@ export const defaultSettings = (): Settings => ({
     tutorialHints: true,
     largeReticle: false,
   },
-  audio: { master: 0.8, music: 0.6, sfx: 0.9, voice: 1, ui: 0.7, mono: false },
+  audio: { master: 0.8, music: 0.6, sfx: 0.9, voice: 1, ui: 0.7, ambience: 0.7, mono: false, duck: true, nightMode: false },
   video: { quality: "auto", fpsCap: 60, dynamicResolution: true, showFps: false, brightness: 1 },
 });
 
