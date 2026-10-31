@@ -17,7 +17,6 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3, Vector4 } from "@babylonjs/core/Maths/math.vector";
-import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { lookDir, type V3 } from "../sim/math";
@@ -794,19 +793,6 @@ export class SceneRenderer {
     this.color?.set(s.a11y.colorblind, s.a11y.colorblindStrength, s.video.brightness);
   }
 
-  /** Projects a world point to screen pixels (for HUD markers). Returns null when behind the camera. */
-  project(p: V3): { x: number; y: number } | null {
-    if (!this.scene || !this.camera) return null;
-    const cam = this.camera;
-    const w = this.engine.getRenderWidth();
-    const h = this.engine.getRenderHeight();
-    const vp = cam.viewport.toGlobal(w, h);
-    const pos = Vector3.Project(v(p), Matrix.Identity(), this.scene.getTransformMatrix(), vp);
-    if (pos.z < 0 || pos.z > 1) return null;
-    const scale = this.engine.getHardwareScalingLevel();
-    return { x: pos.x * scale, y: pos.y * scale };
-  }
-
   dispose(): void {
     this.scene?.dispose();
     this.scene = null;
@@ -829,10 +815,5 @@ export class SceneRenderer {
     this.fx = [];
     this.fxPool = { tracer: [], flash: [], explosion: [], spark: [] };
     this.shadows = null;
-  }
-
-  /** For tests and the debug overlay. */
-  meshCount(): number {
-    return this.scene?.meshes.filter((m: AbstractMesh) => m.isEnabled()).length ?? 0;
   }
 }

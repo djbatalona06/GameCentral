@@ -9,7 +9,7 @@
 // with a laser, grenadiers flush campers out of cover.
 
 import { TUNING } from "../../config/tuning";
-import { type V3, add, angleDiff, clamp01, dist, distXZ, dot, lerp, norm, scale, sub, yawDir, yawOf } from "../math";
+import { type V3, add, angleDiff, clamp01, dist, distXZ, dot, lerp, norm, scale, sub, yawOf } from "../math";
 import { WEAPONS, type WeaponId } from "../combat/weapons";
 import { ARCHETYPES, type Archetype, type ArchetypeId } from "./archetypes";
 import { visibility, updateSuspicion, type Noise } from "./Perception";
@@ -608,10 +608,6 @@ export class Enemy {
   /** True during the wind-up window where the player can counter. */
   get counterable(): boolean {
     return this.meleeWindup > 0 && this.meleeWindup < TUNING.melee.counterWindow;
-  }
-
-  forward(): V3 {
-    return yawDir(this.yaw);
   }
 }
 

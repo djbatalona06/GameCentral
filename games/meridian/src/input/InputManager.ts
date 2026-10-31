@@ -2,7 +2,6 @@
 // Accessibility "toggle instead of hold" options are applied here, so the game never needs
 // to know how a button is physically held.
 
-import { TUNING } from "../config/tuning";
 import type { Settings } from "../core/Settings";
 import { BUTTON_ACTIONS, type ButtonAction, type InputFrame, emptyButtons } from "./actions";
 
@@ -119,10 +118,4 @@ export class InputManager {
       src.look = { yaw: 0, pitch: 0 };
     }
   }
-
-  isToggled(a: ButtonAction): boolean {
-    return this.toggled.has(a);
-  }
-
-  static readonly stickLook = TUNING.camera.lookSensitivity;
 }

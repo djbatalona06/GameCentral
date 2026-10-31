@@ -26,7 +26,6 @@ import {
   yawOf,
 } from "../math";
 import type { Aabb, RuntimeBox, RuntimeCrate, RuntimeLedge, World } from "../world/World";
-import { inside } from "../world/World";
 import type { BeamDef, ClimbWallDef, RopeDef, ZiplineDef } from "../world/types";
 
 const P = TUNING.player;
@@ -1212,11 +1211,6 @@ export class PlayerController {
     }
     this.pos = playerNext;
     world.revision++;
-  }
-
-  /** Is the player standing inside a volume (used for triggers). */
-  inside(v: Aabb): boolean {
-    return inside(add(this.pos, { x: 0, y: 0.5, z: 0 }), v);
   }
 }
 

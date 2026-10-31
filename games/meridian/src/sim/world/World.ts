@@ -103,10 +103,6 @@ export class World {
     this.ledges = data.ledges.map((l) => ({ ...l, removed: false, crumbleTimer: 0 }));
   }
 
-  activeBoxes(): RuntimeBox[] {
-    return this.boxes.filter((b) => !b.removed);
-  }
-
   /** Remove (collapse) every box and ledge in a group. */
   removeGroup(group: string): void {
     for (const b of this.boxes) if (b.group === group) b.removed = true;

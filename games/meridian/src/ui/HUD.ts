@@ -35,7 +35,6 @@ export class HUD {
   private lastObjective = "";
   private damageEls: Array<{ el: HTMLElement; t: number; yaw: number }> = [];
   private soundEls: Array<{ el: HTMLElement; t: number; yaw: number }> = [];
-  private hitTimer = 0;
   onSkip: (() => void) | null = null;
   speak: ((text: string, speaker: Speaker) => void) | null = null;
 
@@ -118,7 +117,6 @@ export class HUD {
         h.classList.toggle("kill", ev.kill);
         void h.offsetWidth;
         h.classList.add("show");
-        this.hitTimer = 0.25;
         break;
       }
       case "playerHurt": {
@@ -283,7 +281,6 @@ export class HUD {
     const f = this.q("fps");
     f.classList.toggle("show", s.video.showFps);
     if (s.video.showFps) f.textContent = `${fps.toFixed(0)} fps`;
-    this.hitTimer -= dt;
   }
 
   reset(): void {
