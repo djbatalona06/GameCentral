@@ -7,6 +7,9 @@ An original treasure-hunting action-adventure for phones and browsers, built wit
 **This build:** every core system plus **all of Act I, chapters 1–7** (about 3 hours), with a 22-chapter / 25-hour story outlined. Plays in portrait or landscape. The look is realistic-leaning but drawn entirely by code (no art files), and every sound and note of music is synthesised. It also builds as Android and iOS apps.
 
 ## Play it
+**Play now:** https://djbatalona06.github.io/GameCentral/ (on iPhone, see the [iPhone install and play guide](docs/play-on-iphone.md)).
+
+Run it locally:
 ```bash
 cd games/meridian
 npm install
