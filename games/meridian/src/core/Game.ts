@@ -12,16 +12,20 @@ import { KeyboardMouse } from "../input/KeyboardMouse";
 import { GamepadInput } from "../input/GamepadInput";
 import { TouchControls } from "../input/TouchControls";
 import type { ButtonAction, InputFrame } from "../input/actions";
-import { GameSim, DIFFICULTY_NAMES, type Difficulty, type SimEvent, type Snapshot } from "../sim/GameSim";
+import { GameSim, DIFFICULTY_NAMES, type Difficulty, type PendingChoice, type SimEvent, type Snapshot } from "../sim/GameSim";
 import { CHAPTERS, chapterById, totalStoryMinutes } from "../sim/chapters/registry";
 import type { ChapterDef, Speaker } from "../sim/story/types";
+import { CHARACTERS, feeling } from "../sim/story/Characters";
+import { CHARACTER_IDS, applyEffects } from "../sim/story/State";
+import { collectChoices } from "../sim/story/Graph";
+import { evaluate } from "../sim/story/Conditions";
 import { SceneRenderer } from "../render/SceneRenderer";
 import { AudioEngine } from "../audio/AudioEngine";
 import { UIManager } from "../ui/UIManager";
 import { HUD } from "../ui/HUD";
 import { renderSettingsTab, padName } from "../ui/SettingsScreen";
 
-type AppState = "menu" | "playing" | "paused" | "dead" | "results";
+type AppState = "menu" | "playing" | "paused" | "choosing" | "dead" | "results";
 
 const TIPS = [
   "Low cover protects you while crouched. Aim to pop up and shoot.",
@@ -34,7 +38,7 @@ const TIPS = [
   "Stay in one place too long and grenadiers will flush you out.",
 ];
 
-const SPEAKER_PITCH: Record<Speaker, number> = { Ines: 1.15, Bram: 0.8, Varek: 0.65, Kessa: 1.0, "Gilt Radio": 0.9, Mercenary: 0.85, Narrator: 1 };
+const SPEAKER_PITCH: Record<Speaker, number> = { Ines: 1.15, Bram: 0.8, Varek: 0.65, Kessa: 1.0, Catalina: 1.3, "Gilt Radio": 0.9, Mercenary: 0.85, Narrator: 1 };
 
 export class Game {
   private persistent = true;
@@ -507,7 +511,9 @@ export class Game {
     this.ui.clear();
     this.audio.stopSpeech();
     this.menuSim = null;
-    this.sim = new GameSim(ch, { ...this.settings.gameplay }, snapshot ?? undefined, Date.now() & 0xffff);
+    // A chapter that is already finished keeps the answers given the first time (nothing is counted twice).
+    const replaying = !!this.save?.chapters[ch.id]?.completed;
+    this.sim = new GameSim(ch, { ...this.settings.gameplay }, snapshot ?? undefined, Date.now() & 0xffff, this.save?.story, replaying);
     this.lastSnapshot = snapshot ?? this.sim.snapshot();
     this.renderer.load(this.sim);
     this.hud.reset();
@@ -603,6 +609,18 @@ export class Game {
           li.append(h, p);
           entries.appendChild(li);
         }
+        const people = el.querySelector('[data-role="people"]')!;
+        const story = sim?.story ?? this.save?.story;
+        for (const id of CHARACTER_IDS) {
+          const info = CHARACTERS[id];
+          const li = document.createElement("li");
+          const h = document.createElement("h3");
+          const p = document.createElement("p");
+          h.textContent = `${info.name}: ${story ? feeling(id, story) : "Unknown"}`;
+          p.textContent = `${info.measures}. ${info.blurb}`;
+          li.append(h, p);
+          people.appendChild(li);
+        }
         const tl = el.querySelector('[data-role="treasures"]')!;
         const found = new Set([...Object.values(this.save?.chapters ?? {}).flatMap((c) => c.treasures), ...(sim ? [...sim.treasures] : [])]);
         const items = CHAPTERS.filter((c) => c.build).flatMap((c) => c.build!().collectibles);
@@ -664,6 +682,119 @@ export class Game {
     });
   }
 
+  // ------------------------------------------------------------------ story choices
+
+  private choiceKeys: ((e: KeyboardEvent) => void) | null = null;
+  private choiceTimerEl: HTMLElement | null = null;
+
+  /** Pauses the world and asks the player a question. */
+  private showChoice(pc: PendingChoice): void {
+    if (!this.sim) return;
+    this.state = "choosing";
+    this.input.enabled = false;
+    this.input.reset();
+    this.keyboard.exitPointerLock();
+    this.touch.show(false);
+    this.ui.show("choice", {
+      init: (el) => {
+        el.querySelector('[data-role="speaker"]')!.textContent = pc.speaker ?? "";
+        el.querySelector('[data-role="prompt"]')!.textContent = pc.prompt;
+        this.choiceTimerEl = el.querySelector('[data-role="timer"]');
+        const list = el.querySelector('[data-role="options"]')!;
+        pc.options.forEach((o, i) => {
+          const b = document.createElement("button");
+          b.dataset.action = "pick";
+          b.dataset.option = o.id;
+          if (i === 0) b.classList.add("primary");
+          const label = document.createElement("span");
+          label.textContent = `${i + 1}. ${o.label}`;
+          b.appendChild(label);
+          if (o.hint) {
+            const hint = document.createElement("span");
+            hint.className = "hint";
+            hint.textContent = o.hint;
+            b.appendChild(hint);
+          }
+          list.appendChild(b);
+        });
+        this.updateChoiceTimer(pc);
+      },
+      action: (a, target) => {
+        if (a === "pick") this.answerChoice(target.dataset.option!);
+      },
+      back: () => false,
+    });
+    this.choiceKeys = (e) => {
+      const n = Number(e.key);
+      if (n >= 1 && n <= pc.options.length) this.answerChoice(pc.options[n - 1].id);
+    };
+    window.addEventListener("keydown", this.choiceKeys);
+  }
+
+  private updateChoiceTimer(pc: PendingChoice): void {
+    const el = this.choiceTimerEl;
+    if (!el) return;
+    el.hidden = pc.timeLeft === undefined;
+    if (pc.timeLeft !== undefined) el.textContent = `Answer in ${Math.max(0, Math.ceil(pc.timeLeft))} seconds, or the quiet answer is chosen.`;
+  }
+
+  private answerChoice(optionId: string): void {
+    if (this.state !== "choosing" || !this.sim?.choose(optionId)) return;
+    this.dispatchEvents();
+    this.closeChoice();
+  }
+
+  private closeChoice(): void {
+    if (this.choiceKeys) window.removeEventListener("keydown", this.choiceKeys);
+    this.choiceKeys = null;
+    this.choiceTimerEl = null;
+    this.resume();
+  }
+
+  /** The quiet moment between chapters: one short talk, then on to the next chapter. */
+  private showBetween(sim: GameSim, then: () => void): void {
+    const save = this.save;
+    const talks = (sim.chapter.script?.downtime ?? [])
+      .filter((t) => !t.requires || evaluate(t.requires, { story: save?.story ?? sim.story, stats: sim.stats }))
+      .slice(0, 3);
+    if (!save || !talks.length) return then();
+    this.ui.show("between", {
+      init: (el) => {
+        const list = el.querySelector('[data-role="talks"]')!;
+        const lines = el.querySelector('[data-role="lines"]')!;
+        const cont = el.querySelector('[data-action="continue"]') as HTMLButtonElement;
+        for (const t of talks) {
+          const b = document.createElement("button");
+          b.textContent = t.label;
+          b.onclick = () => {
+            // Effects count once, even if the chapter is replayed and the same talk is chosen again.
+            const flag = `talk:${t.id}`;
+            if (!save.story.flags[flag]) {
+              save.story = applyEffects(applyEffects(save.story, t.effects), { set: [flag] });
+              void this.persist();
+            }
+            list.replaceChildren();
+            for (const l of t.lines.filter((x) => !x.if || evaluate(x.if, { story: save.story, stats: sim.stats }))) {
+              const p = document.createElement("p");
+              const who = document.createElement("span");
+              who.className = "who";
+              who.textContent = `${l.speaker}: `;
+              p.append(who, l.text);
+              lines.appendChild(p);
+            }
+            cont.textContent = "Continue";
+            cont.focus();
+          };
+          list.appendChild(b);
+        }
+      },
+      action: (a) => {
+        if (a === "continue") then();
+      },
+      back: () => false,
+    });
+  }
+
   private async showResults(): Promise<void> {
     const sim = this.sim;
     if (!sim) return;
@@ -681,7 +812,10 @@ export class Game {
       [`Swift: under ${sim.chapter.script!.parTimeMinutes} minutes`, st.time < sim.chapter.script!.parTimeMinutes * 60],
       ["Ghost: never seen during stealth", !st.stealthBroken && st.alerts === 0],
     ];
+    const storyBefore = this.save?.story ?? sim.story;
+    const storyAfter = sim.finishedStory();
     if (this.save) {
+      this.save.story = storyAfter;
       const prev = this.save.chapters[sim.chapter.id];
       this.save.chapters[sim.chapter.id] = {
         completed: true,
@@ -724,12 +858,32 @@ export class Game {
           if (!got) li.classList.add("missed");
           ul.appendChild(li);
         }
+        // "Because of you": the answers given in this chapter and how the people feel about them.
+        const recap: string[] = [];
+        for (const c of collectChoices(sim.chapter.script!)) {
+          const o = c.options.find((x) => x.id === storyAfter.choices[c.id]);
+          if (o) recap.push(`${c.prompt} You chose: ${o.label}`);
+        }
+        for (const id of CHARACTER_IDS) {
+          const d = storyAfter.rel[id] - storyBefore.rel[id];
+          if (d) recap.push(`${CHARACTERS[id].name}'s ${CHARACTERS[id].measures.toLowerCase()} went ${d > 0 ? "up" : "down"}. Now: ${feeling(id, storyAfter)}.`);
+        }
+        if (recap.length) {
+          const ul2 = el.querySelector('[data-role="story"]') as HTMLElement;
+          for (const line of recap) {
+            const li = document.createElement("li");
+            li.textContent = line;
+            ul2.appendChild(li);
+          }
+          ul2.hidden = false;
+          (el.querySelector('[data-role="story-title"]') as HTMLElement).hidden = false;
+        }
         const nb = el.querySelector('[data-action="next"]') as HTMLButtonElement;
         if (!next?.playable) nb.textContent = next ? `Chapter ${next.number} is coming soon` : "The end, for now";
         nb.disabled = !next?.playable;
       },
       action: (a) => {
-        if (a === "next" && next?.playable) this.startChapter(next, null);
+        if (a === "next" && next?.playable) this.showBetween(sim, () => this.startChapter(next, null));
         if (a === "replay") this.startChapter(sim.chapter, null);
         if (a === "menu") void this.quitToMenu();
       },
@@ -787,6 +941,9 @@ export class Game {
         break;
       case "complete":
         void this.showResults();
+        break;
+      case "choice":
+        this.showChoice(ev.choice);
         break;
       case "playerHurt":
         if (vib) vibrate(25);
@@ -849,6 +1006,8 @@ export class Game {
         this.acc -= step;
         steps++;
         this.sessionPlaytime += step;
+        // A question or a menu opened: stop stepping until the player is back.
+        if (this.state !== "playing") break;
       }
       if (this.acc > step * 4) this.acc = 0;
       this.touch.setContext(sim.prompt?.label ?? null, sim.prompt?.action ?? null);
@@ -857,6 +1016,13 @@ export class Game {
         this.deathTimer -= dt;
         if (this.deathTimer <= 0) this.showDeath();
       }
+    }
+
+    if (sim && this.state === "choosing") {
+      sim.tickChoice(dt);
+      this.dispatchEvents();
+      if (!sim.pendingChoice) this.closeChoice();
+      else this.updateChoiceTimer(sim.pendingChoice);
     }
 
     if (sim) {

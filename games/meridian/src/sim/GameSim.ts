@@ -47,7 +47,10 @@ import { type PuzzleState, bellCaption, canSkip, newPuzzle, pullLever, ringBell,
 import { type HazardState, type MoverState, hazardBox, newHazard, newMover, setHazardActive, stepHazard, stepMover } from "./world/Dynamics";
 import { type Pursuer, type VehicleState, newPursuer, newVehicle, pursuerBox, pursuerHead, seatPos, stepPursuer, stepVehicle, trackAt } from "./vehicle/Vehicle";
 import { type SearchlightState, beamYaw, inBeam, newSearchlight, stepSearchlight } from "./ai/Searchlight";
-import { type Action, type ChapterDef, type Line, type CameraShot, type MusicMood, WORLD_ACTIONS } from "./story/types";
+import { type Action, type ChapterDef, type ChoiceDef, type Line, type CameraShot, type MusicMood, WORLD_ACTIONS } from "./story/types";
+import { type Condition, evaluate } from "./story/Conditions";
+import { type StoryState, STYLE_MIN_SECONDS, applyEffects, cloneStory, newStoryState, normaliseStory, recordChoice, styleOf } from "./story/State";
+import { choiceEvent, collectChoices } from "./story/Graph";
 import type { InteractDef, WeatherDef } from "./world/types";
 
 // ------------------------------------------------------------------ public types
@@ -73,6 +76,8 @@ export interface GameplayOptions {
   fovScale: number;
   puzzleSkipAfter: number;
   invulnerable: boolean;
+  /** Story choices run out of time and pick their quiet default. Off unless the player turns it on. */
+  timedChoices: boolean;
 }
 
 export const defaultGameplay = (): GameplayOptions => ({
@@ -91,6 +96,7 @@ export const defaultGameplay = (): GameplayOptions => ({
   fovScale: 1,
   puzzleSkipAfter: 3,
   invulnerable: false,
+  timedChoices: false,
 });
 
 export interface Snapshot {
@@ -115,6 +121,10 @@ export interface Snapshot {
   stats: ChapterStats;
   /** Story events that were scheduled but had not fired yet when the checkpoint was reached. */
   pending: Array<{ event: string; in: number }>;
+  /** What the story remembers (relationships, flags, answers). Missing in saves from before story choices. */
+  story?: StoryState;
+  /** Choices that were asked but not answered yet. */
+  openChoices?: string[];
 }
 
 export interface ChapterStats {
@@ -164,7 +174,20 @@ export type SimEvent =
   | { type: "warning"; text: string }
   | { type: "vehicle"; kind: "enter" | "crash" | "exit" | "wreck"; pos: V3 }
   | { type: "pursuerDown"; pos: V3 }
-  | { type: "searchlightAlarm"; pos: V3 };
+  | { type: "searchlightAlarm"; pos: V3 }
+  | { type: "choice"; choice: PendingChoice }
+  | { type: "choiceResolved"; choiceId: string; optionId: string };
+
+/** A question on screen. Only what the UI needs: the sim keeps the rules. */
+export interface PendingChoice {
+  id: string;
+  prompt: string;
+  speaker?: string;
+  options: Array<{ id: string; label: string; hint?: string }>;
+  defaultOption: string;
+  /** Seconds left, only when timed choices are on. */
+  timeLeft?: number;
+}
 
 export interface Projectile {
   id: number;
@@ -248,6 +271,15 @@ export class GameSim {
   private wasAiming = false;
   currentLine: Line | null = null;
 
+  /** What the story remembers; carried from chapter to chapter by the save file. */
+  story: StoryState = newStoryState();
+  /** The question the player is answering right now (the world waits while this is set). */
+  pendingChoice: PendingChoice | null = null;
+  private choiceQueue: ChoiceDef[] = [];
+  private choiceDefs = new Map<string, ChoiceDef>();
+  /** Replaying a finished chapter: earlier answers stand, so nothing is added to the story twice. */
+  readonly lockStory: boolean;
+
   movers: MoverState[] = [];
   hazards: HazardState[] = [];
   searchlights: SearchlightState[] = [];
@@ -258,10 +290,13 @@ export class GameSim {
   pursuers: Pursuer[] = [];
   private melody: Array<{ at: number; index: number; count: number; pos: V3 }> = [];
 
-  constructor(chapter: ChapterDef, opts: GameplayOptions, snapshot?: Snapshot, seed = 1234) {
+  constructor(chapter: ChapterDef, opts: GameplayOptions, snapshot?: Snapshot, seed = 1234, story?: StoryState, lockStory = false) {
     if (!chapter.build || !chapter.script) throw new Error(`Chapter ${chapter.id} is not playable yet`);
     this.chapter = chapter;
     this.opts = opts;
+    this.lockStory = lockStory;
+    this.story = normaliseStory(snapshot?.story ?? story);
+    for (const c of collectChoices(chapter.script)) this.choiceDefs.set(c.id, c);
     this.rand = rng(seed);
     this.world = new World(chapter.build());
     const d = this.world.data;
@@ -325,6 +360,8 @@ export class GameSim {
       objective: this.objective ? { ...this.objective } : null,
       stats: { ...this.stats },
       pending: this.scheduled.filter((x): x is { at: number; event: string } => "event" in x).map((x) => ({ event: x.event, in: Math.max(0, x.at - this.time) })),
+      story: cloneStory(this.story),
+      openChoices: [...(this.pendingChoice ? [this.pendingChoice.id] : []), ...this.choiceQueue.map((c) => c.id)],
     };
   }
 
@@ -352,6 +389,11 @@ export class GameSim {
     this.objective = s.objective;
     this.stats = { ...s.stats };
     this.scheduled = (s.pending ?? []).map((x) => ({ at: this.time + x.in, event: x.event }));
+    // A question that was asked but not answered when the checkpoint was saved is asked again.
+    for (const id of s.openChoices ?? []) {
+      const def = this.choiceDefs.get(id);
+      if (def) this.choiceQueue.push(def);
+    }
     this.replaying = false;
     // Make sure waves that were spawned before the checkpoint come back (minus the dead).
     this.enemies = this.enemies.filter((e) => !this.killed.has(e.id));
@@ -418,7 +460,7 @@ export class GameSim {
   private runAction(a: Action): void {
     switch (a.type) {
       case "dialogue":
-        if (!this.replaying) this.dialogueQueue.push(...a.lines);
+        if (!this.replaying) this.dialogueQueue.push(...this.sayable(a.lines));
         break;
       case "objective":
         this.objective = { text: a.text, target: a.target };
@@ -450,7 +492,7 @@ export class GameSim {
       case "cutscene":
         if (this.replaying) break;
         this.cutscene = { shots: a.shots, index: 0, t: 0 };
-        if (a.lines) this.dialogueQueue.push(...a.lines);
+        if (a.lines) this.dialogueQueue.push(...this.sayable(a.lines));
         this.emit({ type: "cutscene", active: true });
         break;
       case "emit":
@@ -502,6 +544,23 @@ export class GameSim {
       case "pursuit":
         if (!this.replaying) this.spawnPursuers(a.group);
         break;
+      case "choice":
+        if (!this.replaying) this.askChoice(a);
+        break;
+      case "branch": {
+        const list = this.check(a.if) ? a.then : a.otherwise ?? [];
+        this.runActions(this.replaying ? list.filter((x) => WORLD_ACTIONS.includes(x.type)) : list);
+        break;
+      }
+      case "set":
+        if (!this.replaying && !this.lockStory) this.story = applyEffects(this.story, { set: [a.flag] });
+        break;
+      case "rel":
+        if (!this.replaying && !this.lockStory) this.story = applyEffects(this.story, { rel: { [a.who]: a.delta } });
+        break;
+      case "stance":
+        if (!this.replaying && !this.lockStory) this.story = applyEffects(this.story, { stance: a.delta });
+        break;
       case "complete":
         if (!this.replaying) {
           this.completed = true;
@@ -509,6 +568,69 @@ export class GameSim {
         }
         break;
     }
+  }
+
+  // ---------------------------------------------------------------- story state & choices
+
+  /** Is this story rule true right now? */
+  check(c: Condition | undefined): boolean {
+    return !c || evaluate(c, { story: this.story, stats: this.stats });
+  }
+
+  /** The lines whose "only if" rule holds. */
+  private sayable(lines: Line[]): Line[] {
+    return lines.filter((l) => this.check(l.if));
+  }
+
+  private askChoice(def: ChoiceDef): void {
+    if (this.lockStory) {
+      // A replayed chapter keeps the answers the player gave the first time.
+      const before = this.story.choices[def.id];
+      const ok = def.options.some((o) => o.id === before && this.check(o.requires));
+      this.fireEvent(choiceEvent(def.id, ok ? before : def.defaultOption));
+      return;
+    }
+    this.choiceQueue.push(def);
+  }
+
+  /** Opens the next waiting question once nothing else is competing for the player's attention. */
+  private openNextChoice(): void {
+    if (this.pendingChoice || !this.choiceQueue.length) return;
+    if (this.currentLine || this.dialogueQueue.length || this.cutscene || this.dead || this.inCombat) return;
+    const def = this.choiceQueue.shift()!;
+    const options = def.options.filter((o) => this.check(o.requires)).map((o) => ({ id: o.id, label: o.label, hint: o.hint }));
+    const timed = this.opts.timedChoices && def.timeoutSec ? def.timeoutSec : undefined;
+    this.pendingChoice = { id: def.id, prompt: def.prompt, speaker: def.speaker, options, defaultOption: def.defaultOption, timeLeft: timed };
+    this.aiming = false;
+    this.emit({ type: "choice", choice: this.pendingChoice });
+  }
+
+  /** The player picked an option (or time ran out). Returns false if that option is not on offer. */
+  choose(optionId: string): boolean {
+    const pc = this.pendingChoice;
+    if (!pc || !pc.options.some((o) => o.id === optionId)) return false;
+    const def = this.choiceDefs.get(pc.id)!;
+    const opt = def.options.find((o) => o.id === optionId)!;
+    this.pendingChoice = null;
+    this.story = recordChoice(applyEffects(this.story, opt.effects), def.id, opt.id);
+    this.emit({ type: "choiceResolved", choiceId: def.id, optionId: opt.id });
+    this.fireEvent(choiceEvent(def.id, opt.id));
+    return true;
+  }
+
+  /** Counts down a timed question (only when the player turned timed choices on). */
+  tickChoice(dt: number): void {
+    const pc = this.pendingChoice;
+    if (!pc || pc.timeLeft === undefined) return;
+    pc.timeLeft -= dt;
+    if (pc.timeLeft <= 0) this.choose(pc.defaultOption);
+  }
+
+  /** The story as it should be saved when the chapter ends: the last chapter's playstyle is remembered. */
+  finishedStory(): StoryState {
+    const s = cloneStory(this.story);
+    if (!this.lockStory && this.stats.time >= STYLE_MIN_SECONDS) s.style = styleOf(this.stats);
+    return s;
   }
 
   private giveWeapon(id: WeaponId, ammo?: number): void {
@@ -557,6 +679,11 @@ export class GameSim {
 
   step(dt: number, input: InputFrame): void {
     if (this.completed) return;
+    if (this.pendingChoice) {
+      // The world waits while the player answers.
+      this.tickChoice(dt);
+      return;
+    }
     dt *= this.timeScale;
     this.time += dt;
     if (!this.dead) this.stats.time += dt;
@@ -571,6 +698,7 @@ export class GameSim {
       }
     }
     this.updateDialogue(dt);
+    this.openNextChoice();
     this.updateMelody();
 
     if (this.cutscene) {

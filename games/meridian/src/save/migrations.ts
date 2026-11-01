@@ -1,6 +1,7 @@
 // Upgrades older save files one version at a time: v1 -> v2 -> ... -> current.
 
-import { SAVE_VERSION, type SaveFile, type SaveFileV1 } from "./schema";
+import { SAVE_VERSION, type SaveFile, type SaveFileV1, type SaveFileV2 } from "./schema";
+import { newStoryState } from "../sim/story/State";
 
 type AnySave = { version: number } & Record<string, unknown>;
 
@@ -9,7 +10,7 @@ const steps: Record<number, (s: AnySave) => AnySave> = {
   1: (raw) => {
     const s = raw as unknown as SaveFileV1;
     const at = new Date(s.savedAt || Date.now()).toISOString();
-    const v2: SaveFile = {
+    const v2: SaveFileV2 = {
       version: 2,
       slot: s.slot,
       createdAt: at,
@@ -26,6 +27,12 @@ const steps: Record<number, (s: AnySave) => AnySave> = {
       newGamePlus: false,
     };
     return v2 as unknown as AnySave;
+  },
+  // v2 had no story state: start everyone at the usual starting feelings. Choices already made
+  // cannot be recovered, so a finished chapter simply keeps the neutral story.
+  2: (raw) => {
+    const v3: SaveFile = { ...(raw as unknown as SaveFileV2), version: 3, story: newStoryState(), endingsSeen: [] };
+    return v3 as unknown as AnySave;
   },
 };
 

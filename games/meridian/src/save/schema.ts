@@ -2,8 +2,10 @@
 // migrations.ts so players never lose progress when the game updates.
 
 import type { ChapterStats, Difficulty, Snapshot } from "../sim/GameSim";
+import type { EndingId } from "../sim/story/Endings";
+import { type StoryState, newStoryState } from "../sim/story/State";
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 export const SLOT_COUNT = 3;
 export const AUTOSAVE_SLOT = 99;
 
@@ -29,7 +31,14 @@ export interface SaveFile {
   journal: string[];
   unlocks: string[];
   newGamePlus: boolean;
+  /** What the story remembers between chapters (relationships, flags, choices). */
+  story: StoryState;
+  /** Endings the player has reached so far (for the chapter menu and New Game+). */
+  endingsSeen: EndingId[];
 }
+
+/** Save format before story choices existed. */
+export type SaveFileV2 = Omit<SaveFile, "version" | "story" | "endingsSeen"> & { version: 2 };
 
 /** The very first save format, kept so migration can be tested. */
 export interface SaveFileV1 {
@@ -56,6 +65,8 @@ export function newSave(slot: number, difficulty: Difficulty, now = new Date()):
     journal: [],
     unlocks: [],
     newGamePlus: false,
+    story: newStoryState(),
+    endingsSeen: [],
   };
 }
 
@@ -71,6 +82,9 @@ export function isSaveFile(x: unknown): x is SaveFile {
     typeof s.chapters === "object" &&
     s.chapters !== null &&
     Array.isArray(s.journal) &&
-    Array.isArray(s.unlocks)
+    Array.isArray(s.unlocks) &&
+    typeof s.story === "object" &&
+    s.story !== null &&
+    Array.isArray(s.endingsSeen)
   );
 }
