@@ -6,7 +6,7 @@ Meridian is an original, story-driven treasure-hunting adventure for phones (and
 ## Who it's for
 | Player | What they want | How Meridian serves them |
 |---|---|---|
-| Mobile action fans | Console-style adventure on a phone | Third-person 3D, touch controls built for thumbs, 60 fps target |
+| Mobile action fans | Console-style adventure on a phone | Third-person 3D, touch controls built for thumbs, steady 30 fps on phones |
 | Story players | A long adventure with characters they care about | 22-chapter story, ~25 hours, journal and treasures |
 | Players with disabilities | To finish the game like everyone else | Accessibility presets on first launch, 50+ options (see `accessibility-matrix.md`) |
 | Controller and keyboard players | Their preferred input | Full gamepad and keyboard/mouse support with remapping |
@@ -18,7 +18,7 @@ No names, characters, locations, story beats or assets come from any existing ga
 
 ## Goals for this build
 1. Ship every core system the full game needs, as a playable mobile web app **and** as Android/iOS store apps (Capacitor).
-2. Ship **Act I: chapters 1–7** (about 3.2 hours with exploration), fully playable start to finish, in portrait or landscape.
+2. Ship **Act I: chapters 1–7** (about 3.2 hours with exploration), fully playable start to finish, in landscape (a phone held upright shows a "turn your phone" prompt and pauses).
 2b. A realistic look that holds 30 fps on a 2021 mid-range phone, and a full synthesised audio pass.
 3. Outline all 22 chapters (about 25 hours) so future chapters are content work, not engine work.
 4. Meet AAA accessibility expectations from day one.
@@ -40,7 +40,7 @@ No names, characters, locations, story beats or assets come from any existing ga
 | Story | Objectives, dialogue with subtitles, cutscenes, journal, treasures, puzzles, set pieces |
 | Saving | Auto-save at checkpoints, 3 slots + backup, export/import, works offline |
 | Accessibility | Presets, subtitles, colour-blind modes, high contrast, text size, narration, aim/traversal/puzzle assists, remapping, one-handed touch layouts |
-| Performance | 60 fps target on mid-range phones, quality tiers, dynamic resolution, 30 fps battery mode |
+| Performance | Steady 30 fps (never below 20) on mid-range phones, 60 fps option on strong devices, quality tiers, dynamic resolution |
 
 ## Success measures
 - A first-time player can finish chapter 1 using only touch controls.

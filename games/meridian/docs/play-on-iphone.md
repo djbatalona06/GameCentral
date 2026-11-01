@@ -35,15 +35,18 @@ Meridian is free and needs no App Store. You add it to your Home Screen from Saf
 
 ## 3. Hold it your way
 
-Play with the phone **sideways (landscape)** or **upright (portrait)**. The buttons move to fit.
+Meridian is played with the phone **sideways (landscape)**. If you hold it upright, a "Turn your phone sideways" message covers the game and the game pauses. Turn the phone and it carries on by itself.
 
-If the game won't turn, open **Control Centre** (swipe down from the top-right corner) and switch off **Portrait Orientation Lock** (the padlock with an arrow).
+If the screen won't turn, open **Control Centre** (swipe down from the top-right corner) and switch off **Portrait Orientation Lock** (the padlock with an arrow).
 
 ## 4. Controls
 
 | Button | What it does |
 |---|---|
-| **Left thumb** anywhere on the left | A stick appears under your thumb. Push to walk; push far to run. |
+| **Left thumb** at the bottom left | A stick appears under your thumb. Push to walk; push far to run. |
+| **RUN / WALK** (left side) | Tap to switch. In **Walk** mode the stick moves you slowly and quietly (good for sneaking) and never sprints. Tap again to go back to **Run**. |
+| **Gun card** (left side, see-through) | Shows the gun you are holding, its name and how much ammo is left. **Tap it to switch guns.** |
+| **Goal card** (left side, top) | Shows your current goal. **Tap it** to turn the camera toward where you need to go. |
 | **Swipe on the right** | Look around. |
 | **JUMP** | Jump, grab ledges, climb. On a ledge, hold the stick in a direction and press Jump to leap that way. |
 | **USE** | Use whatever its label says: open, pick up, grapple, push a crate, get in the jeep. |
@@ -52,8 +55,7 @@ If the game won't turn, open **Control Centre** (swipe down from the top-right c
 | **MELEE** | Punch, sneak takedowns, and counters when an enemy flashes white. |
 | **THROW** | Hold to see where a bottle or grenade will land; let go to throw. |
 | **CROUCH** | Sneak. Hide in tall grass or bushes. |
-| **RELOAD** / **SWAP** | Reload, or switch guns. |
-| **GOAL** | Turns the camera toward where you need to go. |
+| **RELOAD** | Reload your gun. |
 | **II** | Pause, see your Journal, change Settings. |
 
 Special moments:
@@ -67,7 +69,7 @@ Special moments:
 Pause (**II**), then **Settings**:
 
 - **Controls → Touch layout:** *Two thumbs*, *One hand (right)* or *One hand (left)*.
-- **Controls → Move touch buttons:** drag any button where you want it. Portrait and landscape remember their own positions.
+- **Controls → Move touch buttons:** drag any button where you want it. Your positions are remembered.
 - **Controls → Button size / Button opacity:** make the buttons bigger or easier to see through.
 - **Controls → Gyro aiming:** tilt the phone to fine-tune your aim. Your iPhone will ask for permission once; tap **Allow**.
 - **Accessibility:** subtitle size, colour-blind modes, high contrast, less camera shake.
