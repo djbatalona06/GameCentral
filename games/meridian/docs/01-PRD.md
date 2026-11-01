@@ -19,6 +19,7 @@ No names, characters, locations, story beats or assets come from any existing ga
 ## Goals for this build
 1. Ship every core system the full game needs, as a playable mobile web app **and** as Android/iOS store apps (Capacitor).
 2. Ship **Act I: chapters 1–7** (about 3.2 hours with exploration), fully playable start to finish, in portrait or landscape.
+2a. A story that responds: choices, relationships (Bram, Kessa), playstyle reactions and three endings, built into the engine and woven through Act I.
 2b. A realistic look that holds 30 fps on a 2021 mid-range phone, and a full synthesised audio pass.
 3. Outline all 22 chapters (about 25 hours) so future chapters are content work, not engine work.
 4. Meet AAA accessibility expectations from day one.
@@ -38,6 +39,7 @@ No names, characters, locations, story beats or assets come from any existing ga
 | Melee & stealth | 3-hit combo, counters, environmental finishers, silent takedowns (behind, from ledge, from above, from grass), tall grass, bottle distractions, enemy tagging |
 | Enemies | 7 types (rifleman, breacher, marksman, grenadier, heavy, brute, lieutenant boss) with vision, hearing, suspicion, cover use, flanking, squad attack limits |
 | Story | Objectives, dialogue with subtitles, cutscenes, journal, treasures, puzzles, set pieces |
+| Choices | Spoken answers at story moments (nine in Act I) that change who helps you, what people say and which of three endings is reachable; people remember how you play; short optional talks between chapters; no timers unless the player opts in |
 | Saving | Auto-save at checkpoints, 3 slots + backup, export/import, works offline |
 | Accessibility | Presets, subtitles, colour-blind modes, high contrast, text size, narration, aim/traversal/puzzle assists, remapping, one-handed touch layouts |
 | Performance | 60 fps target on mid-range phones, quality tiers, dynamic resolution, 30 fps battery mode |

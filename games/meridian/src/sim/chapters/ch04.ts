@@ -32,6 +32,9 @@ export function buildCh04() {
   b.enemy("rifleman", [4, 0, 36], 180, "camp", { patrol: [[4, 0, 36], [-8, 0, 36]] });
   b.enemy("shotgunner", [-8, 0, 50], 120, "camp");
   b.enemy("brute", [9, 0, 52], 200, "camp");
+  // A cage wagon holding the caravan's crew, well away from the guards. Freeing them is optional (a story choice).
+  b.block(12, 3, 2.4, 3.2, 0, 2.0, "wood");
+  b.interact("captives", [9.6, 1.0, 3], "examine", "Free the caravan crew", "captives", { radius: 1.4 });
   b.pickup([-9, 0.3, 4], "bottle", 2);
   b.pickup([10, 0.3, 12], "ammo", 15);
   b.treasure("ch04-lamp", [-10.5, 0.4, 42], "Brass Caravan Lamp", "Pierced brass throws a lace of light across the sand. Someone kept it polished for a hundred years.");

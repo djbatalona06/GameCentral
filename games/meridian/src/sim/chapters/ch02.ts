@@ -15,6 +15,9 @@ export function buildCh02() {
   b.box([-10, -1, -12], [10, 0, 56], "stone");
   b.checkpoint("c1", [0, 0, -6], 0, "Harbour Steps");
   b.pickup([2, 0.3, -4], "bottle", 2);
+  // A frightened stall owner near the steps. Talking to him is optional (a story choice).
+  b.block(8.4, 0.5, 1.6, 2.4, 0, 1.2, "wood");
+  b.interact("vendor", [6.6, 1.0, 0.5], "examine", "Talk to the stall owner", "vendor", { radius: 1.4 });
   b.treasure("ch02-lamp", [8, 0.4, -8], "Brass Oil Lamp", "Hammered brass with a spout shaped like a swallow. Harbour lamps like this lit Catalina's departures.");
   b.cover(-2, 8, 2.4, 1.0, 0, "low", "wood");
   b.cover(3, 18, 1.2, 2.4, 0, "high", "wood");
@@ -192,6 +195,9 @@ export const ch02Script: ChapterScript = {
         lines: [
           { speaker: "Ines", text: "Charts, letters... and this. A map of the Serra Verde with a temple circled twice." },
           { speaker: "Bram", text: "Jungle. Of course it's jungle." },
+          { speaker: "Varek", text: "Still saying no, Miss Calder? How refreshing.", if: { flag: "varek.refused" } },
+          { speaker: "Varek", text: "You never did name your price, Miss Calder. I will assume it is reasonable.", if: { flag: "varek.stalled" } },
+          { speaker: "Varek", text: "My people checked those museums. Not one has heard of you. Delightful.", if: { flag: "varek.bluffed" } },
           { speaker: "Varek", text: "Keep running, Miss Calder. You are drawing me a lovely map." },
         ],
       },

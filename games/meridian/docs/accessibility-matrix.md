@@ -30,6 +30,9 @@ Each feature is mapped to the **Xbox Accessibility Guidelines (XAG 101–118)** 
 | Traversal assist (auto-balance, smart ledge jumps, auto rope swing) | Gameplay | 108 | Advanced |
 | Auto pick-up | Gameplay | 107 | Intermediate |
 | Puzzle hints after struggling; puzzle skip after N tries or 3 minutes | Gameplay / Pause | 108 | Intermediate |
+| Story questions: the world waits with no time limit by default; timed choices are an opt-in setting and fall back to a quiet default | Gameplay | 108 | Intermediate: no timers |
+| Story questions work by tap, keys 1 to 4, gamepad and screen reader (prompt is announced; each answer is a labelled button); the HUD is hidden so nothing competes for attention | Story | 107 Input, 103 | Basic |
+| Relationships are described in words in the journal, never as bare numbers or colours | Journal | 101 | Basic |
 | 4 difficulty presets + separate sliders: enemy damage, enemy accuracy, player health, ammo | Gameplay | 108 | Basic: levels; Advanced: granular |
 | Invulnerability option | Gameplay | 108 | Advanced |
 | "Retry on an easier difficulty" on the death screen | Death screen | 108 | Intermediate |

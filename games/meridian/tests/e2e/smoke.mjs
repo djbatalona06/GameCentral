@@ -233,6 +233,58 @@ try {
   check("rotation: touch buttons re-lay out on screen", await inside());
   check("rotation: no input stuck after rotating", await game(() => window.__meridian.input.touch.held.size === 0));
 
+  // 12b. Story choices: ask Varek's question, tap an answer, finish the chapter, see the recap and a quiet talk.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto(`${BASE}?debug=1&chapter=1`);
+  await page.waitForFunction(() => window.__meridian?.sim, null, { timeout: 30000 });
+  await game(() => {
+    const s = window.__meridian.sim;
+    s.enemies = [];
+    s.opts.invulnerable = true;
+    s.fireEvent("astrolabe");
+    s.skipCutscene();
+  });
+  await page.waitForSelector('[data-screen="choice"]', { timeout: 15000 });
+  await page.waitForTimeout(400);
+  await shot("story-choice-landscape");
+  check("story: Varek's question opens and the world waits", (await game(() => window.__meridian.state)) === "choosing" && (await page.locator("[data-option]").count()) === 3);
+  const t0 = await game(() => window.__meridian.sim.time);
+  await page.waitForTimeout(600);
+  check("story: time stands still while choosing", (await game(() => window.__meridian.sim.time)) === t0);
+  await page.locator('[data-option="refuse"]').tap();
+  await page.waitForTimeout(400);
+  check("story: tapping an answer is remembered and play resumes", await game(() => window.__meridian.sim.story.choices.varek_offer === "refuse" && window.__meridian.state === "playing"));
+  // Portrait layout of a question.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await game(() => window.__meridian.sim.fireEvent("reach_boat"));
+  await page.waitForSelector('[data-screen="choice"]', { timeout: 30000 });
+  await shot("story-choice-portrait");
+  const fits = await page.evaluate(() => [...document.querySelectorAll("[data-option]")].every((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; }));
+  check("story: portrait question fits on a phone screen", fits);
+  await page.keyboard.press("1");
+  await page.waitForTimeout(300);
+  check("story: the 1 key picks the first answer", await game(() => window.__meridian.sim.story.choices.rubbing === "show"));
+  await page.setViewportSize({ width: 844, height: 390 });
+  await game(() => window.__meridian.showJournal());
+  await page.waitForSelector('[data-screen="journal"]');
+  check("story: the journal has a People page with Bram", (await page.locator('[data-role="people"] li').allTextContents()).join(" ").includes("Bram Okafor"));
+  await page.waitForTimeout(500);
+  await page.evaluate(() => document.querySelector('[data-screen="journal"]').scrollTo(0, 0));
+  await shot("story-journal-people");
+  await game(() => window.__meridian.ui.pop());
+  await game(() => window.__meridian.sim.fireEvent("end"));
+  await page.waitForSelector('[data-screen="results"]', { timeout: 60000 });
+  await shot("story-results");
+  check("story: results show 'Because of you'", (await page.locator('[data-role="story"] li').count()) >= 1);
+  await click('[data-screen="results"] [data-action="next"]');
+  await page.waitForSelector('[data-screen="between"]');
+  await shot("story-between");
+  await page.locator('[data-screen="between"] [data-role="talks"] button').first().click();
+  check("story: a quiet talk plays", (await page.locator('[data-role="lines"] p').count()) >= 2);
+  await click('[data-screen="between"] [data-action="continue"]');
+  await page.waitForFunction(() => window.__meridian?.sim?.chapter.id === "ch02", null, { timeout: 30000 });
+  check("story: chapter 2 starts after the quiet moment", true);
+
   // 13. Desktop: keyboard movement without touch controls.
   const desk = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const dp = await desk.newPage();
@@ -242,7 +294,8 @@ try {
   await dp.waitForTimeout(800);
   const dz0 = await dp.evaluate(() => window.__meridian.sim.player.pos.z);
   await dp.keyboard.down("KeyW");
-  await dp.waitForTimeout(1200);
+  // Software rendering can run slowly, so wait until Ines has moved rather than for a fixed time.
+  await dp.waitForFunction((z0) => window.__meridian.sim.player.pos.z > z0 + 2, dz0, { timeout: 8000 }).catch(() => {});
   await dp.keyboard.up("KeyW");
   const dz1 = await dp.evaluate(() => window.__meridian.sim.player.pos.z);
   check("keyboard W moves Ines on desktop", dz1 > dz0 + 2, `z ${dz0.toFixed(2)} -> ${dz1.toFixed(2)}`);

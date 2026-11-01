@@ -57,6 +57,7 @@ export const OPTIONS: Option[] = [
   { tab: "gameplay", label: "Slow-motion aiming", type: "toggle", get: (s) => s.gameplay.slowMoAim, set: (s, v) => (s.gameplay.slowMoAim = v as boolean) },
   { tab: "gameplay", label: "Traversal assist", desc: "Auto-balance on beams, smart ledge jumps, automatic rope swinging.", type: "toggle", get: (s) => s.gameplay.autoTraversal, set: (s, v) => (s.gameplay.autoTraversal = v as boolean) },
   { tab: "gameplay", label: "Auto pick-up", type: "toggle", get: (s) => s.gameplay.autoPickup, set: (s, v) => (s.gameplay.autoPickup = v as boolean) },
+  { tab: "gameplay", label: "Timed story choices (off: the game always waits for you)", type: "toggle", get: (s) => s.gameplay.timedChoices, set: (s, v) => (s.gameplay.timedChoices = v as boolean) },
   { tab: "gameplay", label: "Offer puzzle skip after", type: "slider", min: 1, max: 6, step: 1, format: (v) => `${v} tries`, get: (s) => s.gameplay.puzzleSkipAfter, set: (s, v) => (s.gameplay.puzzleSkipAfter = v as number) },
   { tab: "gameplay", label: "Camera auto-centre", type: "toggle", get: (s) => s.gameplay.autoRecenter, set: (s, v) => (s.gameplay.autoRecenter = v as boolean) },
 
