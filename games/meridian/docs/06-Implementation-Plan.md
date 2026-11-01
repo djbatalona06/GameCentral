@@ -13,7 +13,7 @@
 | 7 | Client: input devices, renderer, audio, HUD, menus, settings | Done |
 | 8 | Content: chapters 1–3 + 22-chapter outline | Done |
 | 9 | Tests: 78 unit tests, browser smoke test | Done |
-| 10 | Portrait + landscape (camera FOV, HUD, touch layouts per orientation) | Done |
+| 10 | Portrait + landscape (camera FOV, HUD, touch layouts per orientation) | Done, then replaced: the game is now landscape only (see phase 20) |
 | 11 | Act I systems: moving platforms, sweeping hazards, jeep chase + pursuers, weather, bell puzzle, searchlights | Done |
 | 12 | Chapters 4–7 (Act I complete) with route tests | Done |
 | 13 | Art pass: procedural PBR, sky, water, skinned characters, set pieces, quality tiers, glTF drop-in pipeline | Done |
@@ -23,6 +23,7 @@
 | 17 | Chapters 8–15 (Act II): new systems for diving/air, boats, heist stealth | Planned |
 | 18 | Chapters 16–22 (Act III), New Game+, challenge modes, cloud saves | Planned |
 | 19 | Recorded voice acting, audio description of cutscenes | Planned |
+| 20 | Landscape only: turn-your-phone prompt, platform orientation locks, portrait layouts removed, new left-side gun/goal/walk controls | Done |
 
 ## How to add a chapter (repeatable recipe)
 1. Copy `src/sim/chapters/ch03.ts` to `chNN.ts`.

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BUTTONS, defaultPositions, dims } from "../../src/input/TouchControls";
-import type { Orientation, TouchLayout } from "../../src/core/Settings";
+import type { TouchLayout } from "../../src/core/Settings";
 
 const LAYOUTS: TouchLayout[] = ["standard", "oneHandedRight", "oneHandedLeft"];
-const SCREENS: Record<Orientation, { w: number; h: number }> = { landscape: { w: 844, h: 390 }, portrait: { w: 390, h: 844 } };
+/** A small phone held sideways. The game is played in landscape only. */
+const SCREEN = { w: 844, h: 390 };
 
 interface Rect {
   id: string;
@@ -14,12 +15,12 @@ interface Rect {
   round: boolean;
 }
 
-function rects(layout: TouchLayout, o: Orientation, scale: number): Rect[] {
-  const pos = defaultPositions(layout, o);
-  const { w: W, h: H } = SCREENS[o];
+function rects(layout: TouchLayout, scale: number): Rect[] {
+  const pos = defaultPositions(layout);
+  const { w: W, h: H } = SCREEN;
   return BUTTONS.map((d) => {
     const p = pos[d.id];
-    expect(p, `${layout}/${o} has a position for ${d.id}`).toBeDefined();
+    expect(p, `${layout} has a position for ${d.id}`).toBeDefined();
     const { w, h } = dims(d, scale);
     const cx = (p.x / 100) * W;
     const cy = (p.y / 100) * H;
@@ -48,33 +49,28 @@ const clashes = (list: Rect[], only?: (r: Rect) => boolean) => {
 
 describe("default touch layouts", () => {
   for (const layout of LAYOUTS) {
-    for (const o of ["landscape", "portrait"] as Orientation[]) {
-      const name = `${layout} / ${o}`;
-      it(`${name}: every widget is on screen at the default size`, () => {
-        const { w: W, h: H } = SCREENS[o];
-        for (const r of rects(layout, o, 1)) {
-          expect(r.x0, `${r.id} left edge`).toBeGreaterThanOrEqual(0);
-          expect(r.y0, `${r.id} top edge`).toBeGreaterThanOrEqual(0);
-          expect(r.x1, `${r.id} right edge`).toBeLessThanOrEqual(W);
-          expect(r.y1, `${r.id} bottom edge`).toBeLessThanOrEqual(H);
-        }
-      });
-      it(`${name}: the goal card, gun card and Walk switch overlap nothing (sizes 1 and 1.3)`, () => {
-        for (const scale of [1, 1.3]) expect(clashes(rects(layout, o, scale), (r) => MINE.includes(r.id)), `size ${scale}`).toEqual([]);
-      });
-    }
+    it(`${layout}: every widget is on screen at the default size`, () => {
+      const { w: W, h: H } = SCREEN;
+      for (const r of rects(layout, 1)) {
+        expect(r.x0, `${r.id} left edge`).toBeGreaterThanOrEqual(0);
+        expect(r.y0, `${r.id} top edge`).toBeGreaterThanOrEqual(0);
+        expect(r.x1, `${r.id} right edge`).toBeLessThanOrEqual(W);
+        expect(r.y1, `${r.id} bottom edge`).toBeLessThanOrEqual(H);
+      }
+    });
+    it(`${layout}: the goal card, gun card and Walk switch overlap nothing (sizes 1 and 1.3)`, () => {
+      for (const scale of [1, 1.3]) expect(clashes(rects(layout, scale), (r) => MINE.includes(r.id)), `size ${scale}`).toEqual([]);
+    });
   }
 
   // The two-thumb layout is the default. (The one-handed layouts are cramped by design and, at large
   // button sizes, some of their older buttons touch; tidying those is separate work.)
-  for (const o of ["landscape", "portrait"] as Orientation[]) {
-    it(`standard / ${o}: no two widgets overlap at the default size`, () => {
-      expect(clashes(rects("standard", o, 1))).toEqual([]);
-    });
-  }
+  it("standard: no two widgets overlap at the default size", () => {
+    expect(clashes(rects("standard", 1))).toEqual([]);
+  });
 
-  it("keeps the status widgets on the left and the actions on the right (standard, landscape)", () => {
-    const pos = defaultPositions("standard", "landscape");
+  it("keeps the status widgets on the left and the actions on the right (standard)", () => {
+    const pos = defaultPositions("standard");
     for (const id of MINE) expect(pos[id].x, id).toBeLessThan(25);
     for (const id of ["jump", "fire", "aim", "coverRoll", "melee", "interact", "reload", "throw"]) expect(pos[id].x, id).toBeGreaterThan(55);
   });

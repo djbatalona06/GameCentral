@@ -9,11 +9,10 @@ export type ColorblindMode = "none" | "protanopia" | "deuteranopia" | "tritanopi
 export type TouchLayout = "standard" | "oneHandedRight" | "oneHandedLeft";
 export type SubtitleSize = "small" | "medium" | "large" | "xl";
 export type Quality = "auto" | "low" | "medium" | "high" | "ultra";
-export type Orientation = "landscape" | "portrait";
 export type TouchPositions = Record<string, { x: number; y: number }>;
 
 export interface Settings {
-  version: 3;
+  version: 4;
   firstRunDone: boolean;
   gameplay: GameplayOptions;
   controls: {
@@ -30,7 +29,7 @@ export interface Settings {
     touchScale: number;
     touchOpacity: number;
     /** Custom button positions from the layout editor, kept separately for each orientation. */
-    touchPositions: Record<Orientation, TouchPositions>;
+    touchPositions: TouchPositions;
   };
   a11y: {
     subtitles: boolean;
@@ -69,7 +68,7 @@ export interface Settings {
 }
 
 export const defaultSettings = (): Settings => ({
-  version: 3,
+  version: 4,
   firstRunDone: false,
   gameplay: defaultGameplay(),
   controls: {
@@ -85,7 +84,7 @@ export const defaultSettings = (): Settings => ({
     touchLayout: "standard",
     touchScale: 1,
     touchOpacity: 0.55,
-    touchPositions: { landscape: {}, portrait: {} },
+    touchPositions: {},
   },
   a11y: {
     subtitles: true,
@@ -169,7 +168,7 @@ function mergeDefaults<T>(base: T, saved: unknown): T {
   return out as T;
 }
 
-/** Upgrades settings saved by older versions. v1 had one set of touch positions (landscape only). */
+/** Upgrades settings saved by older versions (v1 had one set of touch positions; v2 to v3 added per-orientation ones, v4 went back to one). */
 export function migrateSettings(saved: unknown): unknown {
   const s = structuredClone(saved) as { version?: number; controls?: { touchPositions?: Record<string, unknown> } };
   if ((s.version ?? 1) < 2) {
@@ -186,6 +185,15 @@ export function migrateSettings(saved: unknown): unknown {
       delete o.navAssist;
     }
     s.version = 3;
+  }
+  if ((s.version ?? 1) < 4) {
+    // v4: the game is landscape-only, so there is one set of touch positions. The landscape
+    // positions are kept; portrait positions (no longer used) are dropped.
+    if (s.controls) {
+      const pos = s.controls.touchPositions as { landscape?: Record<string, unknown> } | undefined;
+      s.controls.touchPositions = pos?.landscape ?? {};
+    }
+    s.version = 4;
   }
   return s;
 }

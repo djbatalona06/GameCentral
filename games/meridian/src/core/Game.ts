@@ -56,6 +56,7 @@ export class Game {
   private lastSnapshot: Snapshot | null = null;
   private acc = 0;
   private lastRenderTime = 0;
+  private pausedForRotate = false;
   private lastTime = 0;
   private frame = 0;
   private sessionPlaytime = 0;
@@ -161,6 +162,22 @@ export class Game {
     document.addEventListener("visibilitychange", () => {
       if (document.hidden && this.state === "playing") this.pause();
     });
+    // Landscape only: a phone held upright is covered by a "turn your phone" prompt (index.html, base.css).
+    // Pause behind it, and carry on by itself when the phone is turned back. Computers are not affected.
+    const upright = window.matchMedia("(orientation: portrait) and (pointer: coarse)");
+    const onUpright = () => {
+      if (upright.matches) {
+        if (this.state === "playing") {
+          this.pausedForRotate = true;
+          this.pause();
+        }
+      } else if (this.pausedForRotate) {
+        this.pausedForRotate = false;
+        if (this.state === "paused") this.resume();
+      }
+    };
+    upright.addEventListener("change", onUpright);
+    onUpright();
     // Store app: the Android Back button goes back in menus, or pauses the game.
     void initNative({
       back: () => {
@@ -186,9 +203,9 @@ export class Game {
     window.addEventListener("deviceorientation", (e) => {
       if (e.beta === null || e.gamma === null) return;
       if (this.gyro.active && this.settings.controls.gyroAim && this.sim?.aiming) {
-        const landscape = window.innerWidth > window.innerHeight;
-        const dYaw = (landscape ? e.beta - this.gyro.beta : e.gamma - this.gyro.gamma) * (Math.PI / 180);
-        const dPitch = (landscape ? e.gamma - this.gyro.gamma : e.beta - this.gyro.beta) * (Math.PI / 180);
+        // The game is played in landscape, where the phone's beta tilt is the turn and gamma is up/down.
+        const dYaw = (e.beta - this.gyro.beta) * (Math.PI / 180);
+        const dPitch = (e.gamma - this.gyro.gamma) * (Math.PI / 180);
         if (Math.abs(dYaw) < 0.3 && Math.abs(dPitch) < 0.3) {
           this.input.touch.look.yaw -= dYaw * 0.8;
           this.input.touch.look.pitch += dPitch * 0.8;
@@ -478,7 +495,7 @@ export class Game {
     this.ui.push("layout-editor", {
       action: (a) => {
         if (a === "reset-layout") {
-          this.settings.controls.touchPositions[this.touch.orientation()] = {};
+          this.settings.controls.touchPositions = {};
           this.settingsChanged();
           return;
         }

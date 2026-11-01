@@ -4,7 +4,7 @@ An original treasure-hunting action-adventure for phones and browsers, built wit
 
 > Ines Calder, a salvage diver, follows the 400-year-old route of navigator Catalina de Ordaz to the Drowned City of Meridia, racing the Gilt Company mercenaries.
 
-**This build:** every core system plus **all of Act I, chapters 1–7** (about 3 hours), with a 22-chapter / 25-hour story outlined. Plays in portrait or landscape. The look is realistic-leaning but drawn entirely by code (no art files), and every sound and note of music is synthesised. It also builds as Android and iOS apps.
+**This build:** every core system plus **all of Act I, chapters 1–7** (about 3 hours), with a 22-chapter / 25-hour story outlined. Played in landscape (hold the phone sideways). The look is realistic-leaning but drawn entirely by code (no art files), and every sound and note of music is synthesised. It also builds as Android and iOS apps.
 
 ## Play it
 **Play now:** https://djbatalona06.github.io/GameCentral/ (on iPhone, see the [iPhone install and play guide](docs/play-on-iphone.md)).
@@ -58,8 +58,8 @@ src/audio/            synthesised mixer + reverb spaces, adaptive music, sfx and
 src/ui/               HUD + menus (screens/*.html are plain HTML templates)
 src/styles/           CSS
 src/save/             IndexedDB saves with versioned migrations
-tests/unit/           171 Vitest tests, including route tests for every chapter
-tests/e2e/smoke.mjs   Playwright smoke test: phone in landscape and portrait, chapters 1-7, rotation
+tests/unit/           166 Vitest tests, including route tests for every chapter
+tests/e2e/smoke.mjs   Playwright smoke test: phone in landscape, chapters 1-7, the turn-your-phone prompt
 android/ ios/         Capacitor native projects
 .github/workflows/    (repo root) builds the Android APK and checks the iOS build
 ```

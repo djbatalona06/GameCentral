@@ -35,9 +35,9 @@ Meridian is free and needs no App Store. You add it to your Home Screen from Saf
 
 ## 3. Hold it your way
 
-Play with the phone **sideways (landscape)** or **upright (portrait)**. The buttons move to fit.
+Meridian is played with the phone **sideways (landscape)**. If you hold it upright, a "Turn your phone sideways" message covers the game and the game pauses. Turn the phone and it carries on by itself.
 
-If the game won't turn, open **Control Centre** (swipe down from the top-right corner) and switch off **Portrait Orientation Lock** (the padlock with an arrow).
+If the screen won't turn, open **Control Centre** (swipe down from the top-right corner) and switch off **Portrait Orientation Lock** (the padlock with an arrow).
 
 ## 4. Controls
 
@@ -69,7 +69,7 @@ Special moments:
 Pause (**II**), then **Settings**:
 
 - **Controls → Touch layout:** *Two thumbs*, *One hand (right)* or *One hand (left)*.
-- **Controls → Move touch buttons:** drag any button where you want it. Portrait and landscape remember their own positions.
+- **Controls → Move touch buttons:** drag any button where you want it. Your positions are remembered.
 - **Controls → Button size / Button opacity:** make the buttons bigger or easier to see through.
 - **Controls → Gyro aiming:** tilt the phone to fine-tune your aim. Your iPhone will ask for permission once; tap **Allow**.
 - **Accessibility:** subtitle size, colour-blind modes, high contrast, less camera shake.

@@ -4,7 +4,7 @@
 // are one-handed layouts for players who play with one thumb.
 
 import { TUNING } from "../config/tuning";
-import type { Orientation, Settings, TouchLayout } from "../core/Settings";
+import type { Settings, TouchLayout } from "../core/Settings";
 import type { ButtonAction } from "./actions";
 import type { InputSource } from "./InputManager";
 import { vibrate } from "../platform/native";
@@ -107,61 +107,15 @@ const LAYOUTS: Record<TouchLayout, Record<string, { x: number; y: number }>> = {
   },
 };
 
-/** Portrait (upright) positions. Controls sit in the bottom of the screen so the view stays clear. */
-const PORTRAIT_STANDARD: Record<string, { x: number; y: number }> = {
-  jump: { x: 86, y: 88 },
-  fire: { x: 84, y: 74 },
-  aim: { x: 68, y: 82 },
-  coverRoll: { x: 91, y: 62 },
-  melee: { x: 66, y: 94 },
-  interact: { x: 68, y: 66 },
-  reload: { x: 92, y: 51 },
-  throw: { x: 78, y: 58 },
-  crouch: { x: 50, y: 93 },
-  pause: { x: 93, y: 5 },
-  goal: { x: 32, y: 5.5 },
-  gun: { x: 24, y: 14.5 },
-  walk: { x: 10, y: 41 },
-};
-const PORTRAIT_ONE_HANDED: Record<string, { x: number; y: number }> = {
-  jump: { x: 86, y: 74 },
-  fire: { x: 68, y: 66 },
-  aim: { x: 50, y: 74 },
-  coverRoll: { x: 88, y: 58 },
-  melee: { x: 48, y: 60 },
-  interact: { x: 66, y: 50 },
-  reload: { x: 86, y: 46 },
-  throw: { x: 50, y: 46 },
-  crouch: { x: 32, y: 66 },
-  pause: { x: 93, y: 5 },
-  goal: { x: 32, y: 5.5 },
-  gun: { x: 24, y: 14.5 },
-  walk: { x: 30, y: 52 },
-};
-const mirror = (l: Record<string, { x: number; y: number }>) =>
-  Object.fromEntries(Object.entries(l).map(([k, p]) => [k, { x: 100 - p.x, y: p.y }]));
-const PORTRAIT_LAYOUTS: Record<TouchLayout, Record<string, { x: number; y: number }>> = {
-  standard: PORTRAIT_STANDARD,
-  oneHandedRight: PORTRAIT_ONE_HANDED,
-  oneHandedLeft: mirror(PORTRAIT_ONE_HANDED),
-};
-
 /** Where the floating stick may start for each layout (as viewport fractions). */
-const STICK_ZONE: Record<Orientation, Record<TouchLayout, { x0: number; x1: number; y0: number }>> = {
-  landscape: {
-    standard: { x0: 0, x1: 0.45, y0: 0.4 },
-    oneHandedRight: { x0: 0.55, x1: 1, y0: 0.72 },
-    oneHandedLeft: { x0: 0, x1: 0.45, y0: 0.72 },
-  },
-  portrait: {
-    standard: { x0: 0, x1: 0.45, y0: 0.5 },
-    oneHandedRight: { x0: 0.25, x1: 1, y0: 0.8 },
-    oneHandedLeft: { x0: 0, x1: 0.75, y0: 0.8 },
-  },
+const STICK_ZONE: Record<TouchLayout, { x0: number; x1: number; y0: number }> = {
+  standard: { x0: 0, x1: 0.45, y0: 0.4 },
+  oneHandedRight: { x0: 0.55, x1: 1, y0: 0.72 },
+  oneHandedLeft: { x0: 0, x1: 0.45, y0: 0.72 },
 };
 
-/** Default button positions for a layout in the given orientation. */
-export const defaultPositions = (layout: TouchLayout, o: Orientation) => (o === "portrait" ? PORTRAIT_LAYOUTS : LAYOUTS)[layout];
+/** Default button positions for a layout (the game is played in landscape only). */
+export const defaultPositions = (layout: TouchLayout) => LAYOUTS[layout];
 
 type Owner = { kind: "stick"; ox: number; oy: number } | { kind: "look"; lx: number; ly: number } | { kind: "button"; def: ButtonDef; lx: number; ly: number };
 
@@ -210,19 +164,9 @@ export class TouchControls {
     this.root.addEventListener("pointerup", this.onUp);
     this.root.addEventListener("pointercancel", this.onUp);
     this.applyLayout();
-    // Rotating the phone swaps to that orientation's layout.
-    const relayout = () => {
-      if (this.orientation() !== this.lastOrientation) this.releaseAll();
-      this.applyLayout();
-    };
-    window.addEventListener("resize", relayout);
-    window.addEventListener("orientationchange", relayout);
-  }
-
-  private lastOrientation: Orientation = "landscape";
-
-  orientation(): Orientation {
-    return window.innerHeight > window.innerWidth ? "portrait" : "landscape";
+    // The game is played in landscape only; when the phone is upright the game pauses and a
+    // "turn your phone" prompt covers it (see Game.bindGlobalEvents).
+    window.addEventListener("resize", () => this.applyLayout());
   }
 
   /** True on phones and tablets (or when the player has used touch). */
@@ -239,12 +183,11 @@ export class TouchControls {
 
   applyLayout(): void {
     const c = this.settings().controls;
-    const o = (this.lastOrientation = this.orientation());
-    const layout = defaultPositions(c.touchLayout, o);
+    const layout = defaultPositions(c.touchLayout);
     this.root.style.setProperty("--tc-opacity", String(c.touchOpacity));
     for (const def of BUTTONS) {
       const b = this.buttons.get(def.id)!;
-      const custom = c.touchLayout === "standard" ? c.touchPositions[o]?.[def.id] : undefined;
+      const custom = c.touchLayout === "standard" ? c.touchPositions[def.id] : undefined;
       const pos = custom ?? layout[def.id];
       const { w, h } = dims(def, c.touchScale);
       b.style.left = `calc(${pos.x}% - ${w / 2}px)`;
@@ -310,7 +253,7 @@ export class TouchControls {
   }
 
   private zone(): { x0: number; x1: number; y0: number } {
-    return STICK_ZONE[this.orientation()][this.settings().controls.touchLayout];
+    return STICK_ZONE[this.settings().controls.touchLayout];
   }
 
   private onDown = (e: PointerEvent) => {
@@ -405,7 +348,7 @@ export class TouchControls {
       if (this.editing) {
         const c = this.settings().controls;
         c.touchLayout = "standard";
-        c.touchPositions[this.orientation()][o.def.id] = { x: (e.clientX / window.innerWidth) * 100, y: (e.clientY / window.innerHeight) * 100 };
+        c.touchPositions[o.def.id] = { x: (e.clientX / window.innerWidth) * 100, y: (e.clientY / window.innerHeight) * 100 };
         this.onLayoutChanged?.();
       } else if (o.def.action) {
         const action = o.def.action;

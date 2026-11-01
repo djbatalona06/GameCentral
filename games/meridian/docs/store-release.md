@@ -8,7 +8,7 @@ Meridian is one web build that ships three ways:
 | **Android app** (Google Play) | Install from Play | Capacitor project in `android/`, built by GitHub Actions |
 | **iPhone / iPad app** (App Store) | Install from the App Store | Capacitor project in `ios/`, needs a Mac (or GitHub's Mac runners) |
 
-Both apps play in **portrait and landscape**, run full screen, use the phone's haptic engine, and map the Android **Back** button to "go back / pause".
+Both apps play in **landscape only** (Android `sensorLandscape`; on iOS the iPhone and iPad list only the landscape orientations, with `UIRequiresFullScreen` for iPad), run full screen, use the phone's haptic engine, and map the Android **Back** button to "go back / pause".
 
 ## What is already done
 - `capacitor.config.ts`: app id `com.gamecentral.meridian`, the name, a dark splash screen, and a hidden status bar.
@@ -37,7 +37,7 @@ Both apps play in **portrait and landscape**, run full screen, use the phone's h
 4. **Store listing.** Both stores ask for these:
    - **Privacy policy URL.** Meridian collects **no personal data**: there are no accounts and no analytics, and saves stay on the device. The draft below is enough. Host it on a public page such as GitHub Pages.
    - **Content rating questionnaire**: stylised violence against human enemies, no blood, no in-app purchases, no gambling. Expect about Teen / PEGI 12.
-   - **Screenshots**: phone portrait *and* landscape (Play needs at least 2; Apple needs 6.7" and 5.5" iPhone sizes). Take them in the debug build with `?debug&chapter=N`.
+   - **Screenshots**: phone landscape (Play needs at least 2; Apple needs 6.7" and 5.5" iPhone sizes). Take them in the debug build with `?debug&chapter=N`.
    - **Data safety (Play) / App privacy (Apple)**: "No data collected".
 
 ## Draft store text
@@ -47,7 +47,7 @@ Both apps play in **portrait and landscape**, run full screen, use the phone's h
 > Salvage diver Ines Calder finds a 400-year-old astrolabe in a shipwreck, and with it the trail of Catalina de Ordaz, a navigator who hid a city from the world. Climb sea cliffs and monastery towers, sneak through caravan camps and searchlit shipyards, race the Gilt Company across the salt flats, and fight along the roof of a speeding night train.
 >
 > • Act I: seven chapters of climbing, stealth, cover shooting and puzzles
-> • Play in portrait or landscape, with touch, gamepad or keyboard
+> • Played in landscape, with touch, gamepad or keyboard
 > • Full accessibility suite: presets for vision, hearing and motor, remappable controls, one-handed touch layouts, subtitles, colour-blind modes, and puzzles that never need sound
 > • No ads, no accounts, works offline
 
@@ -58,5 +58,5 @@ Both apps play in **portrait and landscape**, run full screen, use the phone's h
 - [ ] `npm test` and `npm run e2e` pass
 - [ ] Bump `versionCode` and `versionName` in `android/app/build.gradle`, and the version and build in Xcode
 - [ ] Bump `CACHE` in `public/sw.js` (for web players)
-- [ ] Play through Ch1–7 on a real phone, in both orientations
+- [ ] Play through Ch1–7 on a real phone, and check that holding it upright shows the turn-your-phone prompt
 - [ ] Screenshots updated

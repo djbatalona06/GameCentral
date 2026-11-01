@@ -18,7 +18,7 @@ No names, characters, locations, story beats or assets come from any existing ga
 
 ## Goals for this build
 1. Ship every core system the full game needs, as a playable mobile web app **and** as Android/iOS store apps (Capacitor).
-2. Ship **Act I: chapters 1–7** (about 3.2 hours with exploration), fully playable start to finish, in portrait or landscape.
+2. Ship **Act I: chapters 1–7** (about 3.2 hours with exploration), fully playable start to finish, in landscape (a phone held upright shows a "turn your phone" prompt and pauses).
 2b. A realistic look that holds 30 fps on a 2021 mid-range phone, and a full synthesised audio pass.
 3. Outline all 22 chapters (about 25 hours) so future chapters are content work, not engine work.
 4. Meet AAA accessibility expectations from day one.

@@ -52,8 +52,8 @@ Key rule: **the simulation never knows how it is drawn.** That is what makes eve
 ## Platforms
 - iOS Safari 16+, Android Chrome 110+, desktop Chrome/Edge/Firefox/Safari.
 - Requires WebGL 2. Falls back to a friendly error message if it is unavailable.
-- Portrait and landscape are both fully supported (camera FOV, HUD and touch layouts adapt).
-- Android 7+ (API 24) and iOS 15+ via Capacitor; full screen, both orientations.
+- Landscape only. A touch phone held upright shows a "turn your phone" prompt (`#rotate`, shown by `@media (orientation: portrait) and (pointer: coarse)`) and the game pauses, then resumes by itself when the phone is turned. Computers can use any window shape (the camera widens its view on narrow windows).
+- Android 7+ (API 24) and iOS 15+ via Capacitor; full screen, landscape only (Android `sensorLandscape`, iOS landscape orientations with `UIRequiresFullScreen`, web manifest `landscape`).
 - Quality tiers Low / Medium / High / Ultra (`src/render/Quality.ts`); see `docs/realistic-art-on-phones.md`.
 
 ## Security and privacy
