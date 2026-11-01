@@ -13,7 +13,7 @@ export type Orientation = "landscape" | "portrait";
 export type TouchPositions = Record<string, { x: number; y: number }>;
 
 export interface Settings {
-  version: 2;
+  version: 3;
   firstRunDone: boolean;
   gameplay: GameplayOptions;
   controls: {
@@ -69,7 +69,7 @@ export interface Settings {
 }
 
 export const defaultSettings = (): Settings => ({
-  version: 2,
+  version: 3,
   firstRunDone: false,
   gameplay: defaultGameplay(),
   controls: {
@@ -176,6 +176,16 @@ export function migrateSettings(saved: unknown): unknown {
     const old = s.controls?.touchPositions;
     if (s.controls) s.controls.touchPositions = { landscape: old && !("landscape" in old) ? old : {}, portrait: {} };
     s.version = 2;
+  }
+  if ((s.version ?? 1) < 3) {
+    // v3 replaced the round Swap and Goal buttons with the gun and goal cards (new ids), so the
+    // saved spots of the old buttons are dropped. Every other button keeps its saved spot.
+    const pos = s.controls?.touchPositions as Record<string, Record<string, unknown>> | undefined;
+    for (const o of Object.values(pos ?? {})) {
+      delete o.swapWeapon;
+      delete o.navAssist;
+    }
+    s.version = 3;
   }
   return s;
 }

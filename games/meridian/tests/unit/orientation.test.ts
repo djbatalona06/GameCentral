@@ -25,12 +25,28 @@ describe("settings migration", () => {
   it("moves v1 touch positions into the landscape slot", () => {
     const v1 = { version: 1, controls: { touchPositions: { jump: { x: 10, y: 20 } } } };
     const out = migrateSettings(v1) as ReturnType<typeof defaultSettings>;
-    expect(out.version).toBe(2);
+    expect(out.version).toBe(3);
     expect(out.controls.touchPositions.landscape.jump).toEqual({ x: 10, y: 20 });
     expect(out.controls.touchPositions.portrait).toEqual({});
   });
 
-  it("leaves v2 settings alone", () => {
+  it("drops the saved spots of the old Swap and Goal buttons (v2 to v3) and keeps the rest", () => {
+    const v2 = {
+      version: 2,
+      controls: {
+        touchPositions: {
+          landscape: { swapWeapon: { x: 1, y: 1 }, navAssist: { x: 2, y: 2 }, jump: { x: 3, y: 3 } },
+          portrait: { navAssist: { x: 4, y: 4 }, fire: { x: 5, y: 5 } },
+        },
+      },
+    };
+    const out = migrateSettings(v2) as ReturnType<typeof defaultSettings>;
+    expect(out.version).toBe(3);
+    expect(out.controls.touchPositions.landscape).toEqual({ jump: { x: 3, y: 3 } });
+    expect(out.controls.touchPositions.portrait).toEqual({ fire: { x: 5, y: 5 } });
+  });
+
+  it("leaves current settings alone", () => {
     const s = defaultSettings();
     s.controls.touchPositions.portrait.fire = { x: 1, y: 2 };
     expect(migrateSettings(s)).toEqual(s);

@@ -180,8 +180,11 @@
 /* With touch buttons on screen, keep subtitles in the free half so buttons never cover them. */
 body.touch .hud:not(.cinematic) .subtitles { left: max(16px, env(safe-area-inset-left)); transform: none; width: 50vw; text-align: left; bottom: 24%; }
 body.touch.layout-oneHandedLeft .hud:not(.cinematic) .subtitles { left: auto; right: max(16px, env(safe-area-inset-right)); text-align: right; }
-body.touch .hud .tutorial { width: min(520px, 50vw); left: max(16px, env(safe-area-inset-left)); transform: none; top: max(96px, calc(env(safe-area-inset-top) + 88px)); text-align: left; }
-body.touch.layout-oneHandedLeft .hud .tutorial { left: auto; right: max(16px, env(safe-area-inset-right)); }
+/* The left side now holds the goal and gun cards, so tips go to the top centre. */
+body.touch .hud .tutorial,
+body.touch.layout-oneHandedLeft .hud .tutorial { width: min(420px, 38vw); left: 50%; right: auto; transform: translateX(-50%); top: max(20px, calc(env(safe-area-inset-top) + 12px)); text-align: center; }
+/* On touch, the gun card and goal card (in the touch controls) replace the ammo and objective panels. */
+body.touch .hud .ammo, body.touch .hud .objective { display: none !important; }
 body.touch .prompt { left: 30%; }
 body.touch.layout-oneHandedLeft .prompt { left: 70%; }
 
@@ -259,7 +262,7 @@ body.touch.layout-oneHandedLeft .prompt { left: 70%; }
   body.touch .hud:not(.cinematic) .subtitles,
   body.touch.layout-oneHandedLeft .hud:not(.cinematic) .subtitles { left: 50%; right: auto; transform: translateX(-50%); width: calc(100vw - 32px); text-align: center; bottom: 60%; }
   body.touch .hud .tutorial,
-  body.touch.layout-oneHandedLeft .hud .tutorial { left: 50%; right: auto; transform: translateX(-50%); width: calc(100vw - 32px); top: max(120px, calc(env(safe-area-inset-top) + 112px)); text-align: center; }
+  body.touch.layout-oneHandedLeft .hud .tutorial { left: 50%; right: auto; transform: translateX(-50%); width: calc(100vw - 32px); top: max(190px, calc(env(safe-area-inset-top) + 182px)); text-align: center; }
   /* Two-thumb layout: the left of the screen above the stick is free, so subtitles go there
      and never cover the tutorial card. */
   body.touch.layout-standard .hud:not(.cinematic) .subtitles { left: max(12px, env(safe-area-inset-left)); transform: none; width: 60vw; text-align: left; bottom: 26%; }

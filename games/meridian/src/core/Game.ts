@@ -12,6 +12,7 @@ import { KeyboardMouse } from "../input/KeyboardMouse";
 import { GamepadInput } from "../input/GamepadInput";
 import { TouchControls } from "../input/TouchControls";
 import type { ButtonAction, InputFrame } from "../input/actions";
+import { WEAPONS } from "../sim/combat/weapons";
 import { GameSim, DIFFICULTY_NAMES, type Difficulty, type SimEvent, type Snapshot } from "../sim/GameSim";
 import { CHAPTERS, chapterById, totalStoryMinutes } from "../sim/chapters/registry";
 import type { ChapterDef, Speaker } from "../sim/story/types";
@@ -844,7 +845,10 @@ export class Game {
           this.showJournal();
           break;
         }
-        if (frame.buttons.navAssist.pressed) this.hud.pingObjective();
+        if (frame.buttons.navAssist.pressed) {
+          this.hud.pingObjective();
+          this.touch.pingGoal();
+        }
         sim.step(step, frame);
         this.dispatchEvents();
         this.acc -= step;
@@ -853,6 +857,7 @@ export class Game {
       }
       if (this.acc > step * 4) this.acc = 0;
       this.touch.setContext(sim.prompt?.label ?? null, sim.prompt?.action ?? null);
+      this.syncTouchCards(sim);
       this.touch.setAiming(sim.aiming);
       if (this.deathTimer > 0) {
         this.deathTimer -= dt;
@@ -880,6 +885,18 @@ export class Game {
     this.lastRenderTime = t;
     this.renderer.render(renderDt);
   };
+
+  /** Feeds the left-side gun and goal cards of the touch controls. */
+  private syncTouchCards(sim: GameSim): void {
+    const w = sim.activeWeapon();
+    const def = w && !sim.cutscene ? WEAPONS[w.id] : null;
+    this.touch.setWeapon(
+      w && def
+        ? { name: def.name, slot: def.slot, mag: w.mag, low: w.mag <= Math.ceil(def.magSize * 0.25), reserve: w.reserve, reloading: w.reloadLeft > 0, grenades: sim.grenades, bottles: sim.bottles }
+        : null,
+    );
+    this.touch.setObjective(sim.cutscene ? "" : sim.objective?.text ?? "");
+  }
 
   /** Gamepad navigation for menus, with key-repeat when the stick is held. */
   private menuInput(dt: number): void {

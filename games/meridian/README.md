@@ -28,7 +28,7 @@ Store steps (accounts, signing, listing text): `docs/store-release.md`.
 ## Controls
 | Action | Touch | Keyboard / mouse | Gamepad |
 |---|---|---|---|
-| Move | Left thumb (floating stick, push far to sprint) | WASD (Alt = walk) | Left stick |
+| Move | Left thumb (floating stick, push far to sprint). RUN/WALK switch on the left for slow, quiet sneaking | WASD (Alt = walk) | Left stick |
 | Look | Swipe right side | Mouse (click to lock) | Right stick |
 | Jump / climb | JUMP | Space | A |
 | Cover / roll | COVER | Q | B |
@@ -37,9 +37,9 @@ Store steps (accounts, signing, listing text): `docs/store-release.md`.
 | Drive the jeep (Ch4) | stick: gas + steer, push far to boost | W/S gas/brake, A/D steer, Shift boost | Left stick |
 | Aim / fire | AIM / FIRE (drag to aim) | Right / left mouse | LT / RT |
 | Throw (hold to aim arc) | THROW | G | LB |
-| Reload / swap | RELOAD / SWAP | R / 1-2 or wheel | RB / D-pad ← → |
+| Reload / swap | RELOAD / tap the gun card (left) | R / 1-2 or wheel | RB / D-pad ← → |
 | Crouch | CROUCH | C | D-pad ↓ |
-| Point to objective | GOAL | H | D-pad ↑ |
+| Point to objective | Tap the goal card (left) | H | D-pad ↑ |
 | Pause / journal | II | Esc / J | Menu / View |
 
 Everything is remappable, and there are one-handed touch layouts. See Settings → Controls.
@@ -58,7 +58,7 @@ src/audio/            synthesised mixer + reverb spaces, adaptive music, sfx and
 src/ui/               HUD + menus (screens/*.html are plain HTML templates)
 src/styles/           CSS
 src/save/             IndexedDB saves with versioned migrations
-tests/unit/           154 Vitest tests, including route tests for every chapter
+tests/unit/           171 Vitest tests, including route tests for every chapter
 tests/e2e/smoke.mjs   Playwright smoke test: phone in landscape and portrait, chapters 1-7, rotation
 android/ ios/         Capacitor native projects
 .github/workflows/    (repo root) builds the Android APK and checks the iOS build

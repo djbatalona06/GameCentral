@@ -43,7 +43,10 @@ If the game won't turn, open **Control Centre** (swipe down from the top-right c
 
 | Button | What it does |
 |---|---|
-| **Left thumb** anywhere on the left | A stick appears under your thumb. Push to walk; push far to run. |
+| **Left thumb** at the bottom left | A stick appears under your thumb. Push to walk; push far to run. |
+| **RUN / WALK** (left side) | Tap to switch. In **Walk** mode the stick moves you slowly and quietly (good for sneaking) and never sprints. Tap again to go back to **Run**. |
+| **Gun card** (left side, see-through) | Shows the gun you are holding, its name and how much ammo is left. **Tap it to switch guns.** |
+| **Goal card** (left side, top) | Shows your current goal. **Tap it** to turn the camera toward where you need to go. |
 | **Swipe on the right** | Look around. |
 | **JUMP** | Jump, grab ledges, climb. On a ledge, hold the stick in a direction and press Jump to leap that way. |
 | **USE** | Use whatever its label says: open, pick up, grapple, push a crate, get in the jeep. |
@@ -52,8 +55,7 @@ If the game won't turn, open **Control Centre** (swipe down from the top-right c
 | **MELEE** | Punch, sneak takedowns, and counters when an enemy flashes white. |
 | **THROW** | Hold to see where a bottle or grenade will land; let go to throw. |
 | **CROUCH** | Sneak. Hide in tall grass or bushes. |
-| **RELOAD** / **SWAP** | Reload, or switch guns. |
-| **GOAL** | Turns the camera toward where you need to go. |
+| **RELOAD** | Reload your gun. |
 | **II** | Pause, see your Journal, change Settings. |
 
 Special moments:

@@ -240,6 +240,96 @@ try {
   check("rotation: touch buttons re-lay out on screen", await inside());
   check("rotation: no input stuck after rotating", await game(() => window.__meridian.input.touch.held.size === 0));
 
+  // 12b. Left-side widgets: gun card (tap = swap), goal card (tap = point at the goal) and the Walk/Run switch.
+  await page.goto(`${BASE}?debug=1&chapter=3&quality=low`);
+  await page.waitForFunction(() => window.__meridian?.sim, null, { timeout: 30000 });
+  await game(() => {
+    const g = window.__meridian;
+    g.sim.skipCutscene();
+    g.sim.opts.invulnerable = true;
+    g.settings.controls.touchLayout = "standard";
+    g.touch.applyLayout();
+    if (!g.sim.weapons.sidearm) g.sim.giveWeapon("pistol", 60);
+    if (!g.sim.weapons.long) g.sim.giveWeapon("rifle", 90);
+  });
+  await page.waitForTimeout(1500);
+  const cards = await game(() => {
+    const g = window.__meridian;
+    const q = (sel) => document.querySelector(sel);
+    const rect = (sel) => q(sel).getBoundingClientRect().toJSON();
+    const w = g.sim.activeWeapon();
+    return {
+      gunName: q(".tc-gun [data-role=gun-name]").textContent,
+      gunAmmo: q(".tc-gun [data-role=gun-ammo]").textContent,
+      expectAmmo: `${w.mag} / ${w.reserve}`,
+      goalText: q(".tc-goal [data-role=goal-text]").textContent,
+      objective: g.sim.objective?.text ?? "",
+      gun: rect(".tc-gun"), goal: rect(".tc-goal"), walk: rect(".tc-walk"), jump: rect(".tc-jump"), fire: rect(".tc-fire"),
+      width: innerWidth,
+      ammoShown: getComputedStyle(q(".hud .ammo")).display !== "none",
+      objectiveShown: getComputedStyle(q(".hud .objective")).display !== "none",
+    };
+  });
+  await shot("touch-layout-landscape-low");
+  check("gun card shows the weapon name", cards.gunName.length > 2, cards.gunName);
+  check("gun card shows magazine / reserve ammo", cards.gunAmmo === cards.expectAmmo, `${cards.gunAmmo} vs ${cards.expectAmmo}`);
+  check("goal card shows the current objective", cards.objective.length > 0 && cards.goalText === cards.objective, cards.goalText);
+  check("status widgets sit on the left", cards.gun.right < cards.width * 0.4 && cards.goal.right < cards.width * 0.4 && cards.walk.right < cards.width * 0.4);
+  check("action buttons sit on the right", cards.jump.left > cards.width * 0.5 && cards.fire.left > cards.width * 0.5);
+  check("old ammo and objective panels are hidden on touch", !cards.ammoShown && !cards.objectiveShown);
+
+  const tap = (sel, id) =>
+    page.evaluate(([sel, id]) => {
+      const el = document.querySelector(sel);
+      const t = window.__meridian.input.touch;
+      el.dispatchEvent(new PointerEvent("pointerdown", { pointerId: id, pointerType: "touch", bubbles: true }));
+      const tapped = [...t.tapped];
+      el.dispatchEvent(new PointerEvent("pointerup", { pointerId: id, pointerType: "touch", bubbles: true }));
+      return tapped;
+    }, [sel, id]);
+  check("tapping the goal card presses Goal", (await tap(".tc-goal", 41)).includes("navAssist"));
+  const before = await game(() => window.__meridian.sim.weapons.active);
+  check("tapping the gun card presses Swap", (await tap(".tc-gun", 42)).includes("swapWeapon"));
+  await page.waitForTimeout(500);
+  const after = await game(() => window.__meridian.sim.weapons.active);
+  check("tapping the gun card swaps the weapon", before !== after, `${before} -> ${after}`);
+  await page.waitForTimeout(300);
+  const nameAfter = await game(() => document.querySelector(".tc-gun [data-role=gun-name]").textContent);
+  check("gun card updates after a swap", nameAfter !== cards.gunName, `${cards.gunName} -> ${nameAfter}`);
+
+  // Walk/Run: the same stick push covers much less ground in Walk mode.
+  const spot = await game(() => {
+    const p = window.__meridian.sim.player;
+    return { pos: { ...p.pos }, yaw: p.yaw };
+  });
+  const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+  const reset = () => game((s) => window.__meridian.sim.player.teleport(s.pos, s.yaw), spot);
+  await reset();
+  await page.waitForTimeout(300);
+  await holdStick(0, -60, 1000);
+  const run = flat(spot.pos, await game(() => ({ ...window.__meridian.sim.player.pos })));
+  await reset();
+  await tap(".tc-walk", 43);
+  check("Walk switch turns on", (await game(() => window.__meridian.touch.walk)) === true && (await page.locator(".tc-walk").textContent()) === "Walk");
+  await page.waitForTimeout(300);
+  await holdStick(0, -60, 1000);
+  const walk = flat(spot.pos, await game(() => ({ ...window.__meridian.sim.player.pos })));
+  await shot("touch-layout-walk-on");
+  check("Walk mode moves slower than Run", run > 1 && walk > 0.2 && walk < run * 0.7, `run ${run.toFixed(2)} m, walk ${walk.toFixed(2)} m`);
+  await tap(".tc-walk", 44);
+  check("Walk switch turns off again", (await game(() => window.__meridian.touch.walk)) === false && (await page.locator(".tc-walk").textContent()) === "Run");
+
+  // Portrait: cards fit and stay clear of the tutorial/meters.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(800);
+  await shot("touch-layout-portrait-low");
+  check("portrait: gun and goal cards are on screen and on the left", await page.evaluate(() => [".tc-gun", ".tc-goal", ".tc-walk"].every((sel) => {
+    const r = document.querySelector(sel).getBoundingClientRect();
+    return r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.right < innerWidth * 0.75;
+  })));
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(500);
+
   // 13. Desktop: keyboard movement without touch controls.
   const desk = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const dp = await desk.newPage();
