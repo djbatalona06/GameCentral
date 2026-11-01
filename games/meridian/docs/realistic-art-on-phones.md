@@ -22,7 +22,7 @@ Target device: a mid-range Android phone from 2021 (for example a Snapdragon 7-s
 | Ch6 Night Train | 36–51 | 5k–12k |
 | Ch7 Ironwood Docks | 30–95 | 24k–36k |
 
-Every chapter uses less than a third of the budget, so there is plenty of headroom for real models. Turn on `?debug` and call `__meridian.renderer.stats()` in the browser console to see the numbers for yourself.
+Every chapter uses less than a third of the budget, so there is plenty of headroom for real models. Turn on `?debug` and call `__meridian.renderer.stats()` in the browser console to see the numbers for yourself. It also reports `fps`, `p95FrameMs` (how bad the worst frames are), `avgCostMs` and the current render `scaling`. Run it on a real phone before trusting any of these figures.
 
 ## What the game does today (no image files at all)
 | Technique | What it gives | Cost | File |
@@ -36,7 +36,7 @@ Every chapter uses less than a third of the budget, so there is plenty of headro
 | **Merged static level** | The whole level becomes one mesh per material. | About 10 draw calls for the whole level. | `SceneRenderer.buildEnvironment` |
 | **Weather particles** | Snow, sand and rain around the camera. | 200–900 particles depending on tier. | `src/render/SetPieces.ts` |
 | **Quality tiers** | Low / Medium / High / Ultra switch every expensive feature from one table. | — | `src/render/Quality.ts` |
-| **Dynamic resolution** | If the frame rate drops, the render resolution drops a little until it recovers. | — | `SceneRenderer.dynamicResolution` |
+| **Frame pacing and dynamic resolution** | The 30/60 fps cap is a time grid, so it holds on 60, 90 and 120 Hz screens. If frames run late, the render resolution drops in small steps (never below 60% of full) and rises again when there is headroom. | — | `src/render/FrameGovernor.ts` |
 
 ## What makes things look "real" (in order of payoff)
 1. **Lighting and tone mapping.** Light that falls off like real light, a sky colour that tints the shadows, and a filmic curve. This alone is most of the jump from "greybox" to "game". ✅ Done.

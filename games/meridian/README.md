@@ -58,7 +58,7 @@ src/audio/            synthesised mixer + reverb spaces, adaptive music, sfx and
 src/ui/               HUD + menus (screens/*.html are plain HTML templates)
 src/styles/           CSS
 src/save/             IndexedDB saves with versioned migrations
-tests/unit/           135 Vitest tests, including route tests for every chapter
+tests/unit/           154 Vitest tests, including route tests for every chapter
 tests/e2e/smoke.mjs   Playwright smoke test: phone in landscape and portrait, chapters 1-7, rotation
 android/ ios/         Capacitor native projects
 .github/workflows/    (repo root) builds the Android APK and checks the iOS build
