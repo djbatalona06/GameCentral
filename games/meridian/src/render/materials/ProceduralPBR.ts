@@ -214,23 +214,24 @@ export function bakeMaterial(mat: Material, size: number): Baked {
   return baked;
 }
 
-const raw = (data: Uint8Array, size: number, name: string, scene: Scene, srgb: boolean): RawTexture => {
+const raw = (data: Uint8Array, size: number, name: string, scene: Scene, srgb: boolean, aniso: number): RawTexture => {
   const t = new RawTexture(data, size, size, Engine.TEXTUREFORMAT_RGBA, scene, true, false, Texture.TRILINEAR_SAMPLINGMODE, Engine.TEXTURETYPE_UNSIGNED_BYTE, undefined, undefined, srgb);
   t.name = name;
   t.wrapU = t.wrapV = Texture.WRAP_ADDRESSMODE;
-  t.anisotropicFilteringLevel = 4;
+  t.anisotropicFilteringLevel = aniso;
   // Level UVs are in metres; one texture tile covers 2 m.
   t.uScale = t.vScale = 0.5;
   return t;
 };
 
 /** A physically based material for one surface type. */
-export function proceduralPBR(scene: Scene, mat: Material, size: number): PBRMaterial {
+/** `aniso` is the anisotropic filtering level (sharper at grazing angles, costs fill rate). */
+export function proceduralPBR(scene: Scene, mat: Material, size: number, aniso = 4): PBRMaterial {
   const b = bakeMaterial(mat, size);
   const m = new PBRMaterial(`pbr-${mat}`, scene);
-  m.albedoTexture = raw(b.albedo, size, `${mat}-albedo`, scene, true);
-  m.bumpTexture = raw(b.normal, size, `${mat}-normal`, scene, false);
-  m.metallicTexture = raw(b.orm, size, `${mat}-orm`, scene, false);
+  m.albedoTexture = raw(b.albedo, size, `${mat}-albedo`, scene, true, aniso);
+  m.bumpTexture = raw(b.normal, size, `${mat}-normal`, scene, false, aniso);
+  m.metallicTexture = raw(b.orm, size, `${mat}-orm`, scene, false, aniso);
   m.useAmbientOcclusionFromMetallicTextureRed = true;
   m.useRoughnessFromMetallicTextureGreen = true;
   m.useMetallnessFromMetallicTextureBlue = true;

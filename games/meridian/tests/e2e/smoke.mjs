@@ -177,8 +177,15 @@ try {
   const cdp = await context.newCDPSession(page);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   await page.waitForTimeout(4000);
-  const fps = await game(() => window.__meridian.renderer?.engine?.getFps?.() ?? 0);
-  console.log(`INFO  fps under 4x CPU throttle with software WebGL: ${fps.toFixed(1)}`);
+  const perf = await game(() => {
+    const r = window.__meridian.renderer;
+    return { ...r.stats(), engineFps: r.engine.getFps(), deltaMs: r.engine.getDeltaTime() };
+  });
+  console.log(`INFO  fps under 4x CPU throttle with software WebGL: ${perf.fps.toFixed(1)} (p95 frame ${perf.p95FrameMs.toFixed(0)} ms, render scale ${perf.scaling.toFixed(2)})`);
+  // Regression test: the game drives its own frame loop, so Babylon's clock only runs if beginFrame is called.
+  // When it stopped, the fps readout was 0, the water froze and dynamic resolution collapsed.
+  check("frame clock is running", perf.fps > 0 && perf.engineFps > 0 && perf.deltaMs > 0, `fps ${perf.fps.toFixed(1)}, engine fps ${perf.engineFps.toFixed(1)}, delta ${perf.deltaMs.toFixed(1)} ms`);
+  check("render scale stays above the sharpness floor", perf.scaling <= 1 / 0.6 + 1e-6, `scale ${perf.scaling.toFixed(2)}`);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
 
   // 11. Act I chapters 4-7 load, stay inside the phone draw-call budget, and show their set pieces.

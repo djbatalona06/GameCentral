@@ -54,6 +54,7 @@ export class Game {
   private save: SaveFile | null = null;
   private lastSnapshot: Snapshot | null = null;
   private acc = 0;
+  private lastRenderTime = 0;
   private lastTime = 0;
   private frame = 0;
   private sessionPlaytime = 0;
@@ -862,7 +863,7 @@ export class Game {
     if (sim) {
       this.audio.listener = { pos: sim.cam.position, yaw: sim.cam.yaw };
       this.audio.update(dt, sim, this.state === "playing");
-      this.hud.update(dt, sim, this.input.device as InputFrame["device"], this.renderer.engine.getFps());
+      this.hud.update(dt, sim, this.input.device as InputFrame["device"], this.renderer.fps);
     } else if (this.menuSim) {
       this.audio.update(dt, null, false);
       // Slow orbit over the beach behind the menus.
@@ -873,9 +874,11 @@ export class Game {
         target: { x: 0, y: 2, z: 52 },
       };
     }
-    const cap = this.settings.video.fpsCap;
-    if (cap === 30 && this.frame % 2 === 1) return;
-    this.renderer.render(cap === 30 ? dt * 2 : dt);
+    // The cap is a time grid, so it holds 30 or 60 fps on 60, 90 and 120 Hz screens alike.
+    if (!this.renderer.shouldRender(t)) return;
+    const renderDt = this.lastRenderTime ? Math.min(0.1, (t - this.lastRenderTime) / 1000) : dt;
+    this.lastRenderTime = t;
+    this.renderer.render(renderDt);
   };
 
   /** Gamepad navigation for menus, with key-repeat when the stick is held. */
