@@ -9,6 +9,15 @@ import { buildCh04, ch04Script } from "./ch04";
 import { buildCh05, ch05Script } from "./ch05";
 import { buildCh06, ch06Script } from "./ch06";
 import { buildCh07, ch07Script } from "./ch07";
+import { withStory } from "../story/Layer";
+import { ch01Story } from "./story/ch01.story";
+import { ch02Story } from "./story/ch02.story";
+import { ch03Story } from "./story/ch03.story";
+import { ch04Story } from "./story/ch04.story";
+import { ch05Story } from "./story/ch05.story";
+import { ch06Story } from "./story/ch06.story";
+import { ch07Story } from "./story/ch07.story";
+import { BEATS, BRANCH_NOTES } from "./story/beats";
 
 const locked = (number: number, title: string, location: string, estMinutes: number, synopsis: string): ChapterDef => ({
   id: `ch${String(number).padStart(2, "0")}`,
@@ -17,44 +26,45 @@ const locked = (number: number, title: string, location: string, estMinutes: num
   location,
   estMinutes,
   synopsis,
+  branchNotes: BRANCH_NOTES[number],
   playable: false,
 });
 
 export const CHAPTERS: ChapterDef[] = [
   {
-    id: "ch01", number: 1, title: "Breakwater", location: "Santa Brigida reef, Atlantic coast", estMinutes: 22, playable: true,
+    id: "ch01", number: 1, title: "Breakwater", location: "Santa Brigida reef, Atlantic coast", estMinutes: 22, beats: BEATS[1], playable: true,
     synopsis: "Ines dives the wreck of Catalina de Ordaz's ship and finds an astrolabe marked with a secret meridian, just as the Gilt Company arrives.",
-    build: buildCh01, script: ch01Script,
+    build: buildCh01, script: withStory(ch01Script, ch01Story),
   },
   {
-    id: "ch02", number: 2, title: "Qasr Amal", location: "The old port of Qasr Amal", estMinutes: 25, playable: true,
+    id: "ch02", number: 2, title: "Qasr Amal", location: "The old port of Qasr Amal", estMinutes: 25, beats: BEATS[2], playable: true,
     synopsis: "Following the meridian east, Ines sneaks through a harbour market held by the Gilt Company, escapes across the rooftops and opens Catalina's sealed archive.",
-    build: buildCh02, script: ch02Script,
+    build: buildCh02, script: withStory(ch02Script, ch02Story),
   },
   {
-    id: "ch03", number: 3, title: "The Green Vault", location: "Jungle ruins of the Serra Verde", estMinutes: 28, playable: true,
+    id: "ch03", number: 3, title: "The Green Vault", location: "Jungle ruins of the Serra Verde", estMinutes: 28, beats: BEATS[3], playable: true,
     synopsis: "The archive leads to a jungle temple. Ines solves its pillar lock, survives a collapsing bridge and faces Varek's lieutenant, Kessa Varn, at the vault door.",
-    build: buildCh03, script: ch03Script,
+    build: buildCh03, script: withStory(ch03Script, ch03Story),
   },
   {
-    id: "ch04", number: 4, title: "Salt Road", location: "Caravan route, Saharan fringe", estMinutes: 30, playable: true,
+    id: "ch04", number: 4, title: "Salt Road", location: "Caravan route, Saharan fringe", estMinutes: 30, beats: BEATS[4], playable: true,
     synopsis: "Ines sneaks through a captured caravan camp, races the Gilt Company across the salt flats in Bram's jeep, survives a sandstorm ambush and finds half of Catalina's star chart.",
-    build: buildCh04, script: ch04Script,
+    build: buildCh04, script: withStory(ch04Script, ch04Story),
   },
   {
-    id: "ch05", number: 5, title: "Bell of Saint Aurel", location: "Mountain monastery", estMinutes: 30, playable: true,
+    id: "ch05", number: 5, title: "Bell of Saint Aurel", location: "Mountain monastery", estMinutes: 30, beats: BEATS[4], playable: true,
     synopsis: "A snowbound climb to an abandoned monastery, a bell-ringing riddle at the top of its tower, and a race downhill ahead of the avalanche the bells set off.",
-    build: buildCh05, script: ch05Script,
+    build: buildCh05, script: withStory(ch05Script, ch05Story),
   },
   {
-    id: "ch06", number: 6, title: "Night Train to Varanask", location: "Mountain railway", estMinutes: 28, playable: true,
+    id: "ch06", number: 6, title: "Night Train to Varanask", location: "Mountain railway", estMinutes: 28, beats: BEATS[3], playable: true,
     synopsis: "A running fight along a speeding night train, ducking tunnels on the roofs, ending in a rematch with Kessa Varn and a race to stop the runaway engine.",
-    build: buildCh06, script: ch06Script,
+    build: buildCh06, script: withStory(ch06Script, ch06Story),
   },
   {
-    id: "ch07", number: 7, title: "Ironwood Docks", location: "Shipyard city", estMinutes: 30, playable: true,
+    id: "ch07", number: 7, title: "Ironwood Docks", location: "Shipyard city", estMinutes: 30, beats: BEATS[4], playable: true,
     synopsis: "Ines slips past the searchlights of the Gilt Company's shipyard, crosses the harbour on swinging crane containers and learns that Varek plans to drain the sea over Meridia.",
-    build: buildCh07, script: ch07Script,
+    build: buildCh07, script: withStory(ch07Script, ch07Story),
   },
   locked(8, "The Ice Archive", "Arctic research station", 96, "A frozen station holds the logbook of Catalina's navigator. A blizzard cuts every way out."),
   locked(9, "The Cartographer's House", "Lisbon-style hill city", 81, "A heist in a crowded mansion party to steal Catalina's lost map case."),

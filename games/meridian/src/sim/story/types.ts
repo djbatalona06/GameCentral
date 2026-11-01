@@ -7,7 +7,7 @@ import type { ButtonAction } from "../../input/actions";
 import type { Condition } from "./Conditions";
 import type { CharacterId, Effects } from "./State";
 
-export type Speaker = "Ines" | "Bram" | "Varek" | "Kessa" | "Catalina" | "Gilt Radio" | "Mercenary" | "Narrator";
+export type Speaker = "Ines" | "Bram" | "Varek" | "Kessa" | "Catalina" | "Vendor" | "Caravaneer" | "Gilt Radio" | "Mercenary" | "Narrator";
 
 export interface Line {
   speaker: Speaker;

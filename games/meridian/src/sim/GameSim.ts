@@ -276,6 +276,8 @@ export class GameSim {
   /** The question the player is answering right now (the world waits while this is set). */
   pendingChoice: PendingChoice | null = null;
   private choiceQueue: ChoiceDef[] = [];
+  /** The chapter wants to end but a question is open, a cutscene is playing or someone is still speaking. */
+  private completeWhenQuiet = false;
   private choiceDefs = new Map<string, ChoiceDef>();
   /** Replaying a finished chapter: earlier answers stand, so nothing is added to the story twice. */
   readonly lockStory: boolean;
@@ -562,7 +564,10 @@ export class GameSim {
         if (!this.replaying && !this.lockStory) this.story = applyEffects(this.story, { stance: a.delta });
         break;
       case "complete":
-        if (!this.replaying) {
+        if (this.replaying) break;
+        // A chapter never ends in the middle of a question, a cutscene or a line someone is still saying.
+        if (this.pendingChoice || this.choiceQueue.length || this.cutscene || this.currentLine || this.dialogueQueue.length) this.completeWhenQuiet = true;
+        else {
           this.completed = true;
           this.emit({ type: "complete" });
         }
@@ -574,7 +579,7 @@ export class GameSim {
 
   /** Is this story rule true right now? */
   check(c: Condition | undefined): boolean {
-    return !c || evaluate(c, { story: this.story, stats: this.stats });
+    return !c || evaluate(c, { story: this.story, stats: this.stats, treasures: this.treasures });
   }
 
   /** The lines whose "only if" rule holds. */
@@ -699,6 +704,10 @@ export class GameSim {
     }
     this.updateDialogue(dt);
     this.openNextChoice();
+    if (this.completeWhenQuiet && !this.pendingChoice && !this.choiceQueue.length && !this.currentLine && !this.dialogueQueue.length && !this.cutscene) {
+      this.completeWhenQuiet = false;
+      this.runAction({ type: "complete" });
+    }
     this.updateMelody();
 
     if (this.cutscene) {

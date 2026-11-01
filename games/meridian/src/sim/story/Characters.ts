@@ -12,6 +12,8 @@ export interface CharacterInfo {
   ladder: [string, string, string, string, string, string];
   /** One line shown in the journal. */
   blurb: string;
+  /** The chapter where Ines first meets them (the journal does not list them before that). */
+  firstChapter: number;
 }
 
 export const CHARACTERS: Record<CharacterId, CharacterInfo> = {
@@ -21,6 +23,7 @@ export const CHARACTERS: Record<CharacterId, CharacterInfo> = {
     measures: "Trust",
     ladder: ["Estranged", "Wary", "Steady", "Trusting", "Close", "Family"],
     blurb: "Ines's mentor and boat captain. He owes a dangerous debt and has not told her.",
+    firstChapter: 1,
   },
   kessa: {
     id: "kessa",
@@ -28,6 +31,7 @@ export const CHARACTERS: Record<CharacterId, CharacterInfo> = {
     measures: "Respect",
     ladder: ["Enemy", "Grudging", "Respectful rival", "Almost an ally", "Ally", "Sworn ally"],
     blurb: "Varek's lieutenant. Blunt and fearless, and tired of taking orders.",
+    firstChapter: 3,
   },
 };
 

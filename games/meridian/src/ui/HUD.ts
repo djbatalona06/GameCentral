@@ -15,6 +15,8 @@ const SPEAKER_COLORS: Record<Speaker, string> = {
   Varek: "#ff8a80",
   Kessa: "#ffab40",
   Catalina: "#d7b8ff",
+  Vendor: "#a5d6a7",
+  Caravaneer: "#ffe082",
   "Gilt Radio": "#c5cae9",
   Mercenary: "#ef9a9a",
   Narrator: "#e0e0e0",

@@ -5,6 +5,8 @@ import { STYLE_MIN_SECONDS, styleOf, type CharacterId, type PlayStyle, type Stor
 
 export type Condition =
   | { flag: string }
+  /** The player has picked up this treasure in the chapter they are playing (exploring changes what people say). */
+  | { treasure: string }
   /** `min` and `max` are both inclusive; give either or both. */
   | { rel: CharacterId; min?: number; max?: number }
   | { stance: "keeper" | "seeker" }
@@ -19,10 +21,12 @@ export type Condition =
 export interface ConditionContext {
   story: StoryState;
   stats: ChapterStats;
+  treasures?: ReadonlySet<string>;
 }
 
 export function evaluate(c: Condition, ctx: ConditionContext): boolean {
   if ("flag" in c) return ctx.story.flags[c.flag] === true;
+  if ("treasure" in c) return ctx.treasures?.has(c.treasure) ?? false;
   if ("rel" in c) {
     const v = ctx.story.rel[c.rel];
     return (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);

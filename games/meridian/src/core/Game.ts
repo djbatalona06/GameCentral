@@ -38,7 +38,7 @@ const TIPS = [
   "Stay in one place too long and grenadiers will flush you out.",
 ];
 
-const SPEAKER_PITCH: Record<Speaker, number> = { Ines: 1.15, Bram: 0.8, Varek: 0.65, Kessa: 1.0, Catalina: 1.3, "Gilt Radio": 0.9, Mercenary: 0.85, Narrator: 1 };
+const SPEAKER_PITCH: Record<Speaker, number> = { Ines: 1.15, Bram: 0.8, Varek: 0.65, Kessa: 1.0, Catalina: 1.3, Vendor: 1.0, Caravaneer: 0.9, "Gilt Radio": 0.9, Mercenary: 0.85, Narrator: 1 };
 
 export class Game {
   private persistent = true;
@@ -611,8 +611,11 @@ export class Game {
         }
         const people = el.querySelector('[data-role="people"]')!;
         const story = sim?.story ?? this.save?.story;
+        // Only people Ines has met by now: the furthest chapter reached decides.
+        const reached = Math.max(sim?.chapter.number ?? 1, ...Object.entries(this.save?.chapters ?? {}).filter(([, c]) => c.completed).map(([k]) => (chapterById(k)?.number ?? 0) + 1));
         for (const id of CHARACTER_IDS) {
           const info = CHARACTERS[id];
+          if (info.firstChapter > reached) continue;
           const li = document.createElement("li");
           const h = document.createElement("h3");
           const p = document.createElement("p");
@@ -695,6 +698,7 @@ export class Game {
     this.input.reset();
     this.keyboard.exitPointerLock();
     this.touch.show(false);
+    this.hud.show(false); // the question needs the whole screen to itself
     this.ui.show("choice", {
       init: (el) => {
         el.querySelector('[data-role="speaker"]')!.textContent = pc.speaker ?? "";
@@ -711,7 +715,7 @@ export class Game {
           b.appendChild(label);
           if (o.hint) {
             const hint = document.createElement("span");
-            hint.className = "hint";
+            hint.className = "choice-hint";
             hint.textContent = o.hint;
             b.appendChild(hint);
           }
@@ -755,7 +759,7 @@ export class Game {
   private showBetween(sim: GameSim, then: () => void): void {
     const save = this.save;
     const talks = (sim.chapter.script?.downtime ?? [])
-      .filter((t) => !t.requires || evaluate(t.requires, { story: save?.story ?? sim.story, stats: sim.stats }))
+      .filter((t) => !t.requires || evaluate(t.requires, { story: save?.story ?? sim.story, stats: sim.stats, treasures: sim.treasures }))
       .slice(0, 3);
     if (!save || !talks.length) return then();
     this.ui.show("between", {
@@ -774,7 +778,7 @@ export class Game {
               void this.persist();
             }
             list.replaceChildren();
-            for (const l of t.lines.filter((x) => !x.if || evaluate(x.if, { story: save.story, stats: sim.stats }))) {
+            for (const l of t.lines.filter((x) => !x.if || evaluate(x.if, { story: save.story, stats: sim.stats, treasures: sim.treasures }))) {
               const p = document.createElement("p");
               const who = document.createElement("span");
               who.className = "who";

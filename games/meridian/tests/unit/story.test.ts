@@ -60,9 +60,9 @@ describe("story state", () => {
   it("applies effects without changing the old state, and keeps numbers in range", () => {
     const a = newStoryState();
     const b = applyEffects(a, { rel: { bram: 2, kessa: 1 }, stance: -1, set: ["x"] });
-    expect(a.rel.bram).toBe(5);
+    expect(a.rel.bram).toBe(4);
     expect(a.flags.x).toBeUndefined();
-    expect(b.rel).toEqual({ bram: 7, kessa: 1 });
+    expect(b.rel).toEqual({ bram: 6, kessa: 1 });
     expect(b.stance).toBe(a.stance - 1);
     expect(b.flags.x).toBe(true);
     const c = applyEffects(applyEffects(b, { rel: { bram: 99 } }), { rel: { kessa: -99 }, stance: -99 });
@@ -73,7 +73,7 @@ describe("story state", () => {
   it("repairs a damaged or missing story instead of crashing", () => {
     expect(normaliseStory(undefined)).toEqual(newStoryState());
     const odd = normaliseStory({ rel: { bram: Number.NaN, kessa: 50 }, stance: "x" as unknown as number, style: "nonsense" as never, flags: null as never });
-    expect(odd.rel).toEqual({ bram: 5, kessa: 10 });
+    expect(odd.rel).toEqual({ bram: 4, kessa: 10 });
     expect(odd.stance).toBe(newStoryState().stance);
     expect(odd.style).toBe("mixed");
     expect(odd.flags).toEqual({});
@@ -90,7 +90,7 @@ describe("story state", () => {
     const s = newStoryState();
     expect(feeling("bram", s)).toBe("Steady");
     expect(feeling("kessa", s)).toBe("Enemy");
-    expect(feeling("bram", applyEffects(s, { rel: { bram: 5 } }))).toBe("Family");
+    expect(feeling("bram", applyEffects(s, { rel: { bram: 6 } }))).toBe("Family");
     expect(Object.keys(CHARACTERS).sort()).toEqual(["bram", "kessa"]);
   });
 });
@@ -102,8 +102,8 @@ describe("conditions", () => {
   it("checks flags, feelings, stance and earlier answers", () => {
     expect(evaluate({ flag: "f" }, ctx(s))).toBe(true);
     expect(evaluate({ flag: "g" }, ctx(s))).toBe(false);
-    expect(evaluate({ rel: "bram", min: 8 }, ctx(s))).toBe(true);
-    expect(evaluate({ rel: "bram", min: 9 }, ctx(s))).toBe(false);
+    expect(evaluate({ rel: "bram", min: 7 }, ctx(s))).toBe(true);
+    expect(evaluate({ rel: "bram", min: 8 }, ctx(s))).toBe(false);
     expect(evaluate({ rel: "kessa", max: 0 }, ctx(s))).toBe(true);
     expect(evaluate({ stance: "seeker" }, ctx(s))).toBe(true);
     expect(evaluate({ stance: "keeper" }, ctx(s))).toBe(false);
@@ -129,7 +129,7 @@ describe("endings", () => {
 
   it("can reach all three", () => {
     expect(resolveEnding(set({ stance: 4 }))).toBe("lantern");
-    expect(resolveEnding(set({ set: ["final:share"], rel: { bram: 5, kessa: 9 } }))).toBe("sharer");
+    expect(resolveEnding(set({ set: ["final:share"], rel: { bram: 4, kessa: 9 } }))).toBe("sharer");
     expect(resolveEnding(set({ set: ["final:keep"], stance: -4 }))).toBe("keeper");
     expect(new Set(["lantern", "sharer", "keeper"].map((e) => ENDINGS[e as keyof typeof ENDINGS].id)).size).toBe(3);
   });
@@ -173,7 +173,7 @@ describe("asking the player a question", () => {
     expect(s.choose("refuse")).toBe(true);
     expect(s.choose("refuse"), "cannot answer twice").toBe(false);
     expect(s.pendingChoice).toBeNull();
-    expect(s.story.rel.bram).toBe(6);
+    expect(s.story.rel.bram).toBe(5);
     expect(s.story.stance).toBe(newStoryState().stance - 1);
     expect(s.story.choices.offer).toBe("refuse");
     expect(s.story.flags.refused).toBe(true);
@@ -251,13 +251,13 @@ describe("checkpoints and choices", () => {
     const snap = JSON.parse(JSON.stringify(a.snapshot())) as Snapshot; // as if saved to disk
     const b = sim(standard(), {}, snap);
     expect(b.story).toEqual(a.story);
-    expect(b.story.rel.bram).toBe(6);
+    expect(b.story.rel.bram).toBe(5);
     expect(b.story.stance).toBe(a.story.stance);
     expect(b.objective?.text).toBe("Refused"); // world effects of the answer are replayed
     expect(b.pendingChoice).toBeNull();
     for (let i = 0; i < 200; i++) b.step(DT, frame());
     expect(b.pendingChoice, "not asked again").toBeNull();
-    expect(b.story.rel.bram).toBe(6);
+    expect(b.story.rel.bram).toBe(5);
   });
 
   it("asks again after a reload if the question was still open", () => {
@@ -276,7 +276,7 @@ describe("checkpoints and choices", () => {
     delete snap.story;
     delete snap.openChoices;
     const kept = applyEffects(newStoryState(), { rel: { bram: 2 } });
-    expect(sim(chapterWith({}), {}, snap as Snapshot, kept).story.rel.bram).toBe(7);
+    expect(sim(chapterWith({}), {}, snap as Snapshot, kept).story.rel.bram).toBe(6);
   });
 });
 
@@ -313,14 +313,12 @@ describe("save version 3", () => {
   it("upgrades a version 2 save and keeps all its progress", () => {
     const v2 = { ...newSave(1, 2), version: 2 } as Record<string, unknown>;
     delete v2.story;
-    delete v2.endingsSeen;
     v2.currentChapter = "ch04";
     const out = migrate(JSON.parse(JSON.stringify(v2)));
     expect(out.version).toBe(3);
     expect(out.currentChapter).toBe("ch04");
     expect(out.difficulty).toBe(2);
     expect(out.story).toEqual(newStoryState());
-    expect(out.endingsSeen).toEqual([]);
   });
 
   it("upgrades a version 1 save all the way", () => {

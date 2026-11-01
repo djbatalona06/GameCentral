@@ -38,7 +38,7 @@ export const STANCE_MAX = 5;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 export function newStoryState(): StoryState {
-  return { flags: {}, rel: { bram: 5, kessa: 0 }, stance: 2, choices: {}, style: "mixed" };
+  return { flags: {}, rel: { bram: 4, kessa: 0 }, stance: 2, choices: {}, style: "mixed" };
 }
 
 /** Returns a new state; the old one is never changed. */
@@ -54,7 +54,6 @@ export function applyEffects(s: StoryState, fx: Effects | undefined): StoryState
   return next;
 }
 
-export const setFlag = (s: StoryState, flag: string): StoryState => applyEffects(s, { set: [flag] });
 export const recordChoice = (s: StoryState, choiceId: string, optionId: string): StoryState => ({ ...s, choices: { ...s.choices, [choiceId]: optionId } });
 
 /** Ghost: never spotted. Brawler: five or more gun kills. Everything else is mixed. */

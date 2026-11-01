@@ -31,7 +31,7 @@ const steps: Record<number, (s: AnySave) => AnySave> = {
   // v2 had no story state: start everyone at the usual starting feelings. Choices already made
   // cannot be recovered, so a finished chapter simply keeps the neutral story.
   2: (raw) => {
-    const v3: SaveFile = { ...(raw as unknown as SaveFileV2), version: 3, story: newStoryState(), endingsSeen: [] };
+    const v3: SaveFile = { ...(raw as unknown as SaveFileV2), version: 3, story: newStoryState() };
     return v3 as unknown as AnySave;
   },
 };
