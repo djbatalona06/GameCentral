@@ -8,6 +8,10 @@ import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, yawOf, sub } from "../sim/math";
 import type { Speaker } from "../sim/story/types";
 import type { InputFrame } from "../input/actions";
+import { buttonName, connectedPadId, keyName, resolveFamily } from "../input/glyphs";
+import { adaptHint } from "./hints";
+import { isComputer } from "../platform/desktop";
+import type { ButtonAction } from "../input/actions";
 
 const SPEAKER_COLORS: Record<Speaker, string> = {
   Ines: "#7fd1c7",
@@ -19,11 +23,7 @@ const SPEAKER_COLORS: Record<Speaker, string> = {
   Narrator: "#e0e0e0",
 };
 
-const PROMPT_KEYS: Record<InputFrame["device"], Record<"interact" | "melee" | "jump", string>> = {
-  keyboard: { interact: "E", melee: "F", jump: "Space" },
-  gamepad: { interact: "Y", melee: "X", jump: "A" },
-  touch: { interact: "Use", melee: "Melee", jump: "Jump" },
-};
+const TOUCH_LABELS: Record<"interact" | "melee" | "jump", string> = { interact: "Use", melee: "Melee", jump: "Jump" };
 
 export class HUD {
   readonly el: HTMLElement;
@@ -37,6 +37,21 @@ export class HUD {
   private soundEls: Array<{ el: HTMLElement; t: number; yaw: number }> = [];
   onSkip: (() => void) | null = null;
   speak: ((text: string, speaker: Speaker) => void) | null = null;
+
+  /** The device that produced the latest input (tutorial hints are worded for it). */
+  private device: InputFrame["device"] = isComputer() ? "keyboard" : "touch";
+
+  /** The key or controller button the player has bound to an action, as printed on their device. */
+  private promptKey(device: InputFrame["device"], action: ButtonAction): string {
+    const c = this.settings().controls;
+    if (device === "touch") return TOUCH_LABELS[action as keyof typeof TOUCH_LABELS] ?? action;
+    if (device === "gamepad") {
+      const idx = c.pad[action][0];
+      return idx === undefined ? "?" : buttonName(idx, resolveFamily(c.glyphs, connectedPadId()));
+    }
+    const code = c.keys[action][0];
+    return code ? keyName(code) : "?";
+  }
 
   constructor(parent: HTMLElement, private settings: () => Settings) {
     const wrap = document.createElement("div");
@@ -90,7 +105,7 @@ export class HUD {
         break;
       case "tutorial":
         if (!a.tutorialHints) break;
-        this.q("tutorial").textContent = ev.text;
+        this.q("tutorial").textContent = adaptHint(ev.text, this.device, (act) => this.promptKey(this.device, act));
         this.q("tutorial").classList.add("show");
         this.tutorialTimer = Math.max(5, ev.text.split(" ").length * 0.35);
         break;
@@ -193,6 +208,7 @@ export class HUD {
   }
 
   update(dt: number, sim: GameSim, device: InputFrame["device"], fps: number): void {
+    this.device = device;
     const s = this.settings();
     const p = sim.player;
     const timers: Array<[number, string]> = [
@@ -257,7 +273,7 @@ export class HUD {
     // Context prompt with the right button name for the current device.
     const pr = this.q("prompt");
     if (sim.prompt && !sim.cutscene) {
-      const key = PROMPT_KEYS[device][sim.prompt.action];
+      const key = this.promptKey(device, sim.prompt.action);
       pr.innerHTML = "";
       if (device !== "touch") {
         const k = document.createElement("kbd");

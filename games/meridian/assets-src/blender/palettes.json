@@ -1,0 +1,105 @@
+{
+  "_note": "Sky colours copied from each chapter's LevelBuilder(...) call in src/sim/chapters/chNN.ts. Keep them in sync so the backgrounds meet the in-game fog with no seam. 'grade' is the per-chapter colour grade the game applies (warmth -1..1, saturation multiplier, contrast multiplier).",
+  "ch01": {
+    "top": "#7fb7d9",
+    "bottom": "#e8d9b5",
+    "fog": "#cfe3ee",
+    "night": false,
+    "haze": 0.00045,
+    "clouds": 0.42,
+    "grade": {
+      "warmth": 0.05,
+      "saturation": 1.06,
+      "contrast": 1.02
+    }
+  },
+  "ch02": {
+    "top": "#f2b880",
+    "bottom": "#f6e3c4",
+    "fog": "#f3d7b0",
+    "night": false,
+    "haze": 0.0006,
+    "clouds": 0.3,
+    "grade": {
+      "warmth": 0.22,
+      "saturation": 1.08,
+      "contrast": 1.04
+    }
+  },
+  "ch03": {
+    "top": "#a7c8c4",
+    "bottom": "#d9e6c3",
+    "fog": "#b4ccb0",
+    "night": false,
+    "haze": 0.0011,
+    "clouds": 0.55,
+    "grade": {
+      "warmth": -0.04,
+      "saturation": 1.1,
+      "contrast": 1.0
+    }
+  },
+  "ch04": {
+    "top": "#2b3550",
+    "bottom": "#c9a46a",
+    "fog": "#8c7a63",
+    "night": true,
+    "haze": 0.0005,
+    "clouds": 0.12,
+    "grade": {
+      "warmth": 0.12,
+      "saturation": 1.0,
+      "contrast": 1.06
+    }
+  },
+  "ch05": {
+    "top": "#7f97ad",
+    "bottom": "#d5dde4",
+    "fog": "#b7c3cd",
+    "night": false,
+    "haze": 0.0005,
+    "clouds": 0.62,
+    "grade": {
+      "warmth": -0.12,
+      "saturation": 0.94,
+      "contrast": 1.04
+    }
+  },
+  "ch06": {
+    "top": "#0d1424",
+    "bottom": "#29324a",
+    "fog": "#1b2233",
+    "night": true,
+    "haze": 0.0007,
+    "clouds": 0.25,
+    "grade": {
+      "warmth": -0.18,
+      "saturation": 0.92,
+      "contrast": 1.08
+    },
+    "moon": 2.2
+  },
+  "ch07": {
+    "top": "#141a26",
+    "bottom": "#36404f",
+    "fog": "#222a36",
+    "night": true,
+    "haze": 0.0009,
+    "clouds": 0.7,
+    "grade": {
+      "warmth": -0.08,
+      "saturation": 0.96,
+      "contrast": 1.08
+    },
+    "moon": 1.6
+  },
+  "key-art": {
+    "top": "#1f2b4a",
+    "bottom": "#1c2a33",
+    "fog": "#f0a35e",
+    "night": false,
+    "haze": 0.0008,
+    "clouds": 0.38,
+    "sunset": true
+  }
+}

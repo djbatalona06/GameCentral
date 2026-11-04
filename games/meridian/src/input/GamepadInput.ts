@@ -5,12 +5,11 @@ import type { Settings } from "../core/Settings";
 import type { ButtonAction } from "./actions";
 import type { InputSource } from "./InputManager";
 
-const DEADZONE = 0.18;
-
-const deadzone = (x: number, y: number): [number, number] => {
+/** Radial deadzone: inside it the stick reads zero, outside it the range is stretched back to 0..1. */
+export const deadzone = (x: number, y: number, dz: number): [number, number] => {
   const m = Math.hypot(x, y);
-  if (m < DEADZONE) return [0, 0];
-  const scaled = Math.min(1, (m - DEADZONE) / (1 - DEADZONE));
+  if (m < dz || m === 0) return [0, 0];
+  const scaled = Math.min(1, (m - dz) / (1 - dz));
   return [(x / m) * scaled, (y / m) * scaled];
 };
 
@@ -54,8 +53,9 @@ export class GamepadInput {
         }
       }
     }
-    const [mx, my] = deadzone(p.axes[0] ?? 0, p.axes[1] ?? 0);
-    const [lx, ly] = deadzone(p.axes[2] ?? 0, p.axes[3] ?? 0);
+    const dz = Math.max(0.02, Math.min(0.4, this.settings().controls.stickDeadzone));
+    const [mx, my] = deadzone(p.axes[0] ?? 0, p.axes[1] ?? 0, dz);
+    const [lx, ly] = deadzone(p.axes[2] ?? 0, p.axes[3] ?? 0, dz);
     this.src.move = { x: mx, y: -my };
     this.menuAxis = { x: mx, y: my };
     // Response curve: fine control near the centre, fast turns at full tilt.

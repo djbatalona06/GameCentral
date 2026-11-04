@@ -2,3 +2,4 @@ node_modules/
 dist/
 tests/e2e/screenshots/
 *.log
+desktop-release/

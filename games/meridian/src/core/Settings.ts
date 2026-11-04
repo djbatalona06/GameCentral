@@ -4,15 +4,18 @@
 import { DEFAULT_KEYS, DEFAULT_PAD, type ButtonAction } from "../input/actions";
 import { defaultGameplay, type GameplayOptions } from "../sim/GameSim";
 import type { KeyValueStore } from "../save/storage";
+import type { GlyphChoice } from "../input/glyphs";
 
 export type ColorblindMode = "none" | "protanopia" | "deuteranopia" | "tritanopia";
 export type TouchLayout = "standard" | "oneHandedRight" | "oneHandedLeft";
 export type SubtitleSize = "small" | "medium" | "large" | "xl";
 export type Quality = "auto" | "low" | "medium" | "high" | "ultra";
 export type TouchPositions = Record<string, { x: number; y: number }>;
+export type MotionBlur = "off" | "low" | "high";
+export type FpsCap = 30 | 60 | 90 | 120 | 144;
 
 export interface Settings {
-  version: 4;
+  version: 5;
   firstRunDone: boolean;
   gameplay: GameplayOptions;
   controls: {
@@ -22,7 +25,15 @@ export interface Settings {
     toggleSprint: boolean;
     toggleCrouch: boolean;
     lookSensitivity: number;
+    /** Vertical look speed as a share of the horizontal speed. */
+    lookYScale: number;
     aimSensitivity: number;
+    /** How far a stick must move before it counts (0..0.4). */
+    stickDeadzone: number;
+    /** Button names shown in prompts: picked from the connected controller, or chosen. */
+    glyphs: GlyphChoice;
+    /** Mouse movement straight from the mouse, without the system's pointer acceleration. */
+    rawMouse: boolean;
     gyroAim: boolean;
     vibration: boolean;
     touchLayout: TouchLayout;
@@ -49,6 +60,8 @@ export interface Settings {
     threatIndicators: boolean;
     tutorialHints: boolean;
     largeReticle: boolean;
+    /** Speed lines, movement trails and dust. Reduce motion turns the strong ones off too. */
+    motionEffects: boolean;
   };
   audio: {
     master: number;
@@ -64,11 +77,21 @@ export interface Settings {
     /** Squash loud peaks (explosions) so quiet sounds stay audible at low volume. */
     nightMode: boolean;
   };
-  video: { quality: Quality; fpsCap: 30 | 60; dynamicResolution: boolean; showFps: boolean; brightness: number };
+  video: {
+    quality: Quality;
+    fpsCap: FpsCap;
+    dynamicResolution: boolean;
+    showFps: boolean;
+    brightness: number;
+    /** Blur on fast-moving characters and objects (High and Ultra only). Off by default. */
+    motionBlur: MotionBlur;
+    /** Share of the screen's resolution the 3D view is drawn at (0.5..1). */
+    renderScale: number;
+  };
 }
 
 export const defaultSettings = (): Settings => ({
-  version: 4,
+  version: 5,
   firstRunDone: false,
   gameplay: defaultGameplay(),
   controls: {
@@ -78,7 +101,11 @@ export const defaultSettings = (): Settings => ({
     toggleSprint: true,
     toggleCrouch: true,
     lookSensitivity: 1,
+    lookYScale: 1,
     aimSensitivity: 0.7,
+    stickDeadzone: 0.18,
+    glyphs: "auto",
+    rawMouse: true,
     gyroAim: false,
     vibration: true,
     touchLayout: "standard",
@@ -104,9 +131,10 @@ export const defaultSettings = (): Settings => ({
     threatIndicators: true,
     tutorialHints: true,
     largeReticle: false,
+    motionEffects: true,
   },
   audio: { master: 0.8, music: 0.6, sfx: 0.9, voice: 1, ui: 0.7, ambience: 0.7, mono: false, duck: true, nightMode: false },
-  video: { quality: "auto", fpsCap: 60, dynamicResolution: true, showFps: false, brightness: 1 },
+  video: { quality: "auto", fpsCap: 60, dynamicResolution: true, showFps: false, brightness: 1, motionBlur: "off", renderScale: 1 },
 });
 
 /** One-tap starting points for players with different needs; every option can still be changed. */
@@ -168,7 +196,7 @@ function mergeDefaults<T>(base: T, saved: unknown): T {
   return out as T;
 }
 
-/** Upgrades settings saved by older versions (v1 had one set of touch positions; v2 to v3 added per-orientation ones, v4 went back to one). */
+/** Upgrades settings saved by older versions (v1 had one set of touch positions; v2 to v3 added per-orientation ones, v4 went back to one, v5 added desktop and controller options). */
 export function migrateSettings(saved: unknown): unknown {
   const s = structuredClone(saved) as { version?: number; controls?: { touchPositions?: Record<string, unknown> } };
   if ((s.version ?? 1) < 2) {
@@ -194,6 +222,11 @@ export function migrateSettings(saved: unknown): unknown {
       s.controls.touchPositions = pos?.landscape ?? {};
     }
     s.version = 4;
+  }
+  if ((s.version ?? 1) < 5) {
+    // v5 added motion blur, render scale, controller button names, stick deadzone, vertical look
+    // speed, raw mouse and the motion-effects switch. Their defaults are filled in by mergeDefaults.
+    s.version = 5;
   }
   return s;
 }

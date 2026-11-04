@@ -78,9 +78,7 @@ export class KeyboardMouse {
 
   private onMouseDown = (e: MouseEvent) => {
     this.src.active = true;
-    if (this.pointerLookEnabled && document.pointerLockElement !== this.canvas) {
-      this.canvas.requestPointerLock?.();
-    }
+    if (this.pointerLookEnabled && document.pointerLockElement !== this.canvas) this.lockPointer();
     for (const a of this.actionsFor(`Mouse${e.button}`)) {
       this.src.held.add(a);
       this.src.tapped.add(a);
@@ -103,6 +101,23 @@ export class KeyboardMouse {
     this.down.clear();
     this.src.held.clear();
     this.src.move = { x: 0, y: 0 };
+  }
+
+  /**
+   * Captures the mouse for camera control. With "Raw mouse input" on, the browser is asked for
+   * unaccelerated movement (the same hand movement always turns the camera the same amount).
+   * Browsers that do not support it fall back to a normal lock.
+   */
+  private lockPointer(): void {
+    const c = this.canvas as HTMLCanvasElement & { requestPointerLock(opts?: { unadjustedMovement?: boolean }): Promise<void> | void };
+    if (!c.requestPointerLock) return;
+    const raw = this.settings().controls.rawMouse;
+    try {
+      const r = c.requestPointerLock(raw ? { unadjustedMovement: true } : undefined);
+      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => (raw ? c.requestPointerLock() : undefined));
+    } catch {
+      c.requestPointerLock();
+    }
   }
 
   exitPointerLock(): void {

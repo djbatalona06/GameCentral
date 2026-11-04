@@ -55,6 +55,15 @@ Each feature is mapped to the **Xbox Accessibility Guidelines (XAG 101–118)** 
 | Night mode: compresses loud peaks so quiet sounds stay audible at low volume | Audio | 105 | Intermediate |
 | Muffled sound through walls tells you where enemies are without seeing them; visual sound indicators still show direction | Audio, HUD | 103 | Intermediate |
 | Jeep driving uses only steer and gas (one thumb); a crash slows you rather than killing you outright | Ch4 | 107 Input, 112 Difficulty | Intermediate |
+| First launch follows the system's "reduce motion" and "increase contrast" settings | First run | 117, 102 | Intermediate |
+| Motion blur is opt-in (Off by default), High/Ultra only, and always off with Reduce motion | Video | 117, 118 Photosensitivity | Basic |
+| "Movement effects" switch for speed lines, trails and dust; Reduce motion keeps only gentle dust. Speed lines never flicker | A11y | 117 | Intermediate |
+| Controller prompts show the buttons printed on the player's controller (Xbox, PlayStation, Switch), detected or chosen; symbols are read out as words | Controls, HUD | 112, 114 | Intermediate |
+| Keyboard prompts show the key the player actually bound, not a fixed default | HUD | 107, 114 | Intermediate |
+| Stick deadzone slider, separate vertical look speed, raw (unaccelerated) mouse input | Controls | 107 | Intermediate |
+| Text contrast is checked by a unit test: main text 7:1 (AAA), all other text 4.5:1 (AA), focus outline 3:1, including over the menu key art | All screens | 102, 101 | Basic/Intermediate |
+| Characters keep a contact shadow and a rim of light on every background, so the player is easy to find | World | 109 Object clarity | Basic |
+| Desktop: full screen (F11, Alt+Enter, or a Settings switch), any key starts, mouse hover states, wide two-column Settings | Desktop | 112, 113 | Basic |
 
 ## Not yet covered (planned)
 | Gap | Guideline | Plan |

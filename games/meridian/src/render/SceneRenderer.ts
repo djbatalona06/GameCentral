@@ -26,6 +26,7 @@ import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
 import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
 import { SSAO2RenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline";
+import { MotionBlurPostProcess } from "@babylonjs/core/PostProcesses/motionBlurPostProcess";
 import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -41,12 +42,14 @@ import type { Pursuer } from "../sim/vehicle/Vehicle";
 import type { PlayerMode } from "../sim/player/PlayerController";
 import type { Settings } from "../core/Settings";
 import { HIGH_CONTRAST_ENV, PALETTE, climbTexture, flatMaterial, gridTexture } from "./greybox";
-import { ColorPostProcess } from "./ColorPostProcess";
+import { ColorPostProcess, NEUTRAL_GRADE, type Grade } from "./ColorPostProcess";
+import palettes from "../../assets-src/blender/palettes.json";
+import { isDesktopApp } from "../platform/desktop";
 import { TIERS, autoTier, type Tier, type TierSpec } from "./Quality";
 import { proceduralPBR } from "./materials/ProceduralPBR";
-import { createSky, luminance } from "./Sky";
+import { createSky, luminance, panoramaUrl } from "./Sky";
 import { createWaterMaterial } from "./WaterShader";
-import { Figure, OUTFITS, outfitFor, type Anim, type Outfit } from "./Figure";
+import { Figure, OUTFITS, outfitFor, type Anim, type FigureLook, type Outfit } from "./Figure";
 import { bellMesh, jeepMesh } from "./meshUtil";
 import { Hazards, Scrolling, Searchlights, Weather } from "./SetPieces";
 import { AssetSwap } from "./assets/AssetLibrary";
@@ -72,8 +75,17 @@ interface Fx {
   mesh: Mesh;
   life: number;
   max: number;
-  kind: "tracer" | "flash" | "explosion" | "spark";
+  kind: "tracer" | "flash" | "explosion" | "spark" | "dust" | "splash";
+  /** Starting size, for effects that grow (dust, splash rings). */
+  size?: number;
+  /** Drift per second (dust rises and spreads). */
+  vx?: number;
+  vy?: number;
+  vz?: number;
 }
+
+/** Most dust puffs and splash rings alive at once (each is one small mesh). */
+const MAX_SOFT_FX = 48;
 
 /** Bram: Ines's mentor, who rides along in the Ch4 jeep. */
 const BRAM: Outfit = { skin: "#5b3a26", top: "#3d5a73", bottom: "#4a4538", boots: "#2a2118", hair: "#bdb7ab", accent: "#c9a447", bulk: 0.06 };
@@ -83,6 +95,10 @@ export class SceneRenderer {
   scene: Scene | null = null;
   private camera: UniversalCamera | null = null;
   private color: ColorPostProcess | null = null;
+  private motionBlur: MotionBlurPostProcess | null = null;
+  private grade: Grade = NEUTRAL_GRADE;
+  /** Rim-light colour for characters in this level (from the sky), or null when off. */
+  private rimColor: string | null = null;
   private shadows: ShadowGenerator | null = null;
   private sun: DirectionalLight | null = null;
   private sim: GameSim | null = null;
@@ -114,10 +130,12 @@ export class SceneRenderer {
   private scrolling: Scrolling | null = null;
   private weather: Weather | null = null;
   private baseFog = 0;
+  /** Dust takes the colour of the level's ground light. */
+  private dustColor = new Color3(0.6, 0.55, 0.48);
   private projectileMeshes: Mesh[] = [];
   private arcDots: Mesh[] = [];
   private fx: Fx[] = [];
-  private fxPool: Record<Fx["kind"], Mesh[]> = { tracer: [], flash: [], explosion: [], spark: [] };
+  private fxPool: Record<Fx["kind"], Mesh[]> = { tracer: [], flash: [], explosion: [], spark: [], dust: [], splash: [] };
   private revision = -1;
   private time = 0;
   private shake = 0;
@@ -144,7 +162,9 @@ export class SceneRenderer {
   /** Applies the quality tier's resolution. "Auto" guesses from the device. */
   applyQuality(): void {
     this.tier = TIERS[this.resolvedQuality()];
-    const dpr = Math.min(window.devicePixelRatio || 1, this.tier.maxDpr);
+    // Render scale (Video settings) draws the 3D view at fewer pixels; the menus stay sharp.
+    const scale = Math.max(0.5, Math.min(1, this.settings().video.renderScale ?? 1));
+    const dpr = Math.min(window.devicePixelRatio || 1, this.tier.maxDpr) * scale;
     this.governor.reset(1 / dpr);
     this.engine.setHardwareScalingLevel(this.governor.currentScaling);
   }
@@ -169,6 +189,7 @@ export class SceneRenderer {
       memoryGb: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
       ios: /iPhone|iPad/i.test(ua),
       gpu: this.engine.getGlInfo().renderer,
+      desktopApp: isDesktopApp(),
     });
   }
 
@@ -188,6 +209,7 @@ export class SceneRenderer {
     scene.clearColor = Color4.FromHexString(sky.fog + "ff");
     scene.fogMode = Scene.FOGMODE_EXP2;
     this.baseFog = sky.fogDensity;
+    this.dustColor = Color3.Lerp(Color3.FromHexString(sky.bottom), new Color3(0.55, 0.52, 0.48), 0.5).scale(night ? 0.5 : 0.85);
     scene.fogDensity = sky.fogDensity;
     scene.fogColor = Color3.FromHexString(sky.fog);
     scene.ambientColor = new Color3(0.3, 0.3, 0.3);
@@ -215,7 +237,14 @@ export class SceneRenderer {
     sun.diffuse = night ? new Color3(0.62, 0.72, 1) : new Color3(1, 0.93, 0.82);
     sun.position = sunDir.scale(-80);
     this.sun = sun;
-    createSky(scene, { top: sky.top, horizon: sky.fog, bottom: sky.bottom }, sunDir, night);
+    // The chapter's Blender-rendered backdrop (smaller file on the Low tier). High contrast keeps the plain sky.
+    const hc0 = this.settings().a11y.highContrast;
+    const pano = hc0 ? undefined : panoramaUrl(sim.chapter.id, tier.shadows === "blob");
+    createSky(scene, { top: sky.top, horizon: sky.fog, bottom: sky.bottom }, sunDir, night, pano);
+    const pal = (palettes as Record<string, { grade?: Grade } | string>)[sim.chapter.id];
+    this.grade = tier.colorGrade && !hc0 && typeof pal === "object" && pal.grade ? pal.grade : NEUTRAL_GRADE;
+    // Rim light: a brightened sky colour, so characters' edges catch the level's own light.
+    this.rimColor = tier.rimLight && !hc0 ? Color3.FromHexString(sky.top).scale(0.5).add(new Color3(0.5, 0.5, 0.5)).toHexString() : null;
 
     if (tier.shadows !== "blob") {
       if (tier.shadows === "cascaded") {
@@ -223,12 +252,16 @@ export class SceneRenderer {
         csm.numCascades = 3;
         csm.lambda = 0.85;
         csm.shadowMaxZ = 120;
-        csm.usePercentageCloserFiltering = true;
+        // Contact-hardening shadows: sharp where an object touches the ground, softer further away.
+        csm.useContactHardeningShadow = true;
+        csm.contactHardeningLightSizeUVRatio = 0.04;
+        csm.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+        csm.penumbraDarkness = 0.85;
         this.shadows = csm;
       } else {
         const sg = new ShadowGenerator(tier.shadows === "pcf2048" ? 2048 : 1024, sun);
         sg.usePercentageCloserFiltering = true;
-        sg.filteringQuality = tier.shadows === "pcf2048" ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW;
+        sg.filteringQuality = tier.shadows === "pcf2048" ? ShadowGenerator.QUALITY_HIGH : ShadowGenerator.QUALITY_LOW;
         // A tight shadow box that follows the player keeps shadows sharp on big levels.
         sun.autoUpdateExtends = false;
         sun.shadowFrustumSize = 70;
@@ -255,22 +288,30 @@ export class SceneRenderer {
       ssao.totalStrength = 1.1;
       ssao.samples = 12;
     }
-    // Colour-blind correction runs last so it sees the final image.
+    // Motion blur (optional, off by default) goes before the colour pass.
+    this.applyMotionBlur();
+    // Colour grade and colour-blind correction run last so they see the final image.
     this.color = new ColorPostProcess(cam);
 
     const swap = new AssetSwap();
     this.buildEnvironment(swap);
     const hc = this.settings().a11y.highContrast;
     const ines = hc ? { ...OUTFITS.ines, top: PALETTE.playerHigh, bottom: PALETTE.playerHigh } : OUTFITS.ines;
-    this.player = this.makeFigure("player", ines, 1.8);
+    this.player = this.makeFigure("player", ines, 1.8, true);
     this.buildActOneVisuals(swap);
     this.applyAccessibility();
     this.revision = sim.world.revision;
     void swap.apply(scene);
   }
 
-  private makeFigure(name: string, outfit: Outfit, height: number): Figure {
-    const f = new Figure(this.scene!, name, outfit, height, this.tier.shadows === "blob");
+  private makeFigure(name: string, outfit: Outfit, height: number, trail = false): Figure {
+    const look: FigureLook = {
+      contact: this.tier.shadows === "blob" ? "strong" : "soft",
+      selfShadow: this.tier.shadows !== "blob",
+      rim: this.rimColor,
+      trail,
+    };
+    const f = new Figure(this.scene!, name, outfit, height, look);
     this.shadows?.addShadowCaster(f.mesh);
     return f;
   }
@@ -721,7 +762,9 @@ export class SceneRenderer {
       lie: p.mode === "dead" ? 1 : 0,
       roll: p.mode === "roll" ? (1 - p.rollTimer / 0.55) * Math.PI * 2 : 0,
       oneHanded: p.mode === "hang" || p.mode === "rope",
+      groundY: p.mode === "air" ? sim.world.groundHeight(p.pos.x, p.pos.z, p.pos.y + 0.05).y : undefined,
     });
+    if (p.mode === "zip") f.showTrail(0.15);
     f.gun.setEnabled(!!sim.activeWeapon() && (sim.aiming || p.mode === "cover" || sim.inCombat || (p.mode === "vehicle" && sim.vehicle?.track.def.mode === "gunner")));
   }
 
@@ -977,15 +1020,119 @@ export class SceneRenderer {
     if (!m) {
       const scene = this.scene!;
       if (kind === "tracer") m = MeshBuilder.CreateBox("tracer", { width: 0.025, height: 0.025, depth: 1 }, scene);
-      else m = MeshBuilder.CreateSphere(kind, { diameter: 1, segments: 8 }, scene);
+      else if (kind === "splash") m = MeshBuilder.CreateTorus("splash", { diameter: 1, thickness: 0.05, tessellation: 20 }, scene);
+      else m = MeshBuilder.CreateSphere(kind, { diameter: 1, segments: kind === "dust" ? 6 : 8 }, scene);
       const mat = new StandardMaterial(`${kind}Mat`, scene);
       mat.disableLighting = true;
+      if (kind === "dust" || kind === "splash") m.applyFog = true;
       m.material = mat;
       m.isPickable = false;
     }
     m.setEnabled(true);
     this.fx.push({ mesh: m, life, max: life, kind });
     return m;
+  }
+
+  /** Movement effects follow the player's settings: Movement effects off removes them, Reduce motion keeps only gentle dust. */
+  private effects(): { dust: number; trails: boolean } {
+    const a = this.settings().a11y;
+    if (!a.motionEffects) return { dust: 0, trails: false };
+    return { dust: a.reduceMotion ? 0.5 : 1, trails: !a.reduceMotion };
+  }
+
+  private softFxCount(): number {
+    let n = 0;
+    for (const f of this.fx) if (f.kind === "dust" || f.kind === "splash") n++;
+    return n;
+  }
+
+  /** A few soft puffs of dust kicked up at the feet. */
+  private dust(at: V3, size: number, count: number): void {
+    const fx = this.effects();
+    const n = Math.round(count * fx.dust);
+    const color = this.dustColor;
+    for (let i = 0; i < n && this.softFxCount() < MAX_SOFT_FX; i++) {
+      const life = 0.55 + Math.random() * 0.35;
+      const m = this.spawnFx("dust", life);
+      const a = Math.random() * Math.PI * 2;
+      const r = 0.15 + Math.random() * 0.25;
+      m.position.set(at.x + Math.cos(a) * r, at.y + 0.12, at.z + Math.sin(a) * r);
+      const f = this.fx[this.fx.length - 1];
+      f.size = (0.22 + Math.random() * 0.12) * size;
+      f.vx = Math.cos(a) * 0.9 * size;
+      f.vy = 0.35 + Math.random() * 0.3;
+      f.vz = Math.sin(a) * 0.9 * size;
+      m.scaling.setAll(f.size);
+      (m.material as StandardMaterial).emissiveColor = color;
+    }
+  }
+
+  /** A ring spreading on the water. */
+  private splash(at: V3): void {
+    if (this.effects().dust === 0 || this.softFxCount() >= MAX_SOFT_FX) return;
+    const m = this.spawnFx("splash", 0.9);
+    m.position.set(at.x, at.y + 0.05, at.z);
+    this.fx[this.fx.length - 1].size = 0.6;
+    (m.material as StandardMaterial).emissiveColor = new Color3(0.85, 0.93, 0.95);
+  }
+
+  /** Visual reactions to the player's own movement: landings, rolls, sprint steps, splashes. */
+  private playerMoved(type: string, pos: V3): void {
+    const f = this.player;
+    if (!f) return;
+    const trails = this.effects().trails;
+    switch (type) {
+      case "land":
+        f.landed(0.45);
+        this.dust(pos, 0.8, 3);
+        break;
+      case "hardLand":
+        f.landed(1);
+        this.dust(pos, 1.3, 6);
+        break;
+      case "sprintStep":
+        this.dust(pos, 0.45, 1);
+        break;
+      case "roll":
+        if (trails) f.showTrail(0.5);
+        this.dust(pos, 0.6, 2);
+        break;
+      case "zip":
+      case "wallJump":
+      case "ledgeHop":
+        if (trails) f.showTrail(0.3);
+        break;
+      case "splash":
+        this.splash(pos);
+        break;
+    }
+  }
+
+  /** Turns the Motion blur setting into a post-process (High and Ultra only; never with Reduce motion). */
+  private applyMotionBlur(): void {
+    const s = this.settings();
+    const scene = this.scene;
+    const cam = this.camera;
+    const want = !!scene && !!cam && this.tier.motionBlur && s.video.motionBlur !== "off" && !s.a11y.reduceMotion;
+    if (!want) {
+      if (this.motionBlur && cam) this.motionBlur.dispose(cam);
+      this.motionBlur = null;
+      return;
+    }
+    if (!this.motionBlur) {
+      try {
+        this.motionBlur = new MotionBlurPostProcess("motionBlur", scene!, 1.0, cam);
+        this.motionBlur.isObjectBased = true;
+        // Keep the colour pass last, so colour-blind correction still sees the final picture.
+        this.color?.moveToEnd();
+      } catch {
+        this.motionBlur = null; // the device cannot do it (no WebGL2): just skip it
+        return;
+      }
+    }
+    const high = s.video.motionBlur === "high";
+    this.motionBlur.motionStrength = high ? 1 : 0.5;
+    this.motionBlur.motionBlurSamples = high ? 24 : 12;
   }
 
   /** Turns simulation events into visual effects. */
@@ -1010,6 +1157,10 @@ export class SceneRenderer {
         sp.scaling.setAll(0.12);
         (sp.material as StandardMaterial).emissiveColor = ev.hit ? new Color3(1, 0.2, 0.15) : new Color3(0.9, 0.9, 0.7);
       }
+    } else if (ev.type === "player") {
+      this.playerMoved(ev.ev.type, ev.ev.pos);
+    } else if (ev.type === "melee") {
+      if (this.effects().trails) this.player?.showTrail(0.25);
     } else if (ev.type === "explosion") {
       const e = this.spawnFx("explosion", 0.45);
       e.position = v(ev.pos);
@@ -1044,6 +1195,17 @@ export class SceneRenderer {
       const mat = f.mesh.material as StandardMaterial;
       mat.alpha = f.kind === "tracer" ? k : k * 0.9;
       if (f.kind === "explosion") f.mesh.scaling.setAll(1 + (1 - k) * 8);
+      if (f.kind === "dust") {
+        // Dust puffs grow, drift outward, rise a little and fade.
+        f.mesh.position.x += (f.vx ?? 0) * dt * k;
+        f.mesh.position.y += (f.vy ?? 0) * dt;
+        f.mesh.position.z += (f.vz ?? 0) * dt * k;
+        f.mesh.scaling.setAll((f.size ?? 0.3) * (1 + (1 - k) * 2.2));
+        mat.alpha = k * k * 0.32;
+      } else if (f.kind === "splash") {
+        f.mesh.scaling.set((f.size ?? 0.6) * (1 + (1 - k) * 4), 1, (f.size ?? 0.6) * (1 + (1 - k) * 4));
+        mat.alpha = k * 0.55;
+      }
       if (f.life <= 0) {
         f.mesh.setEnabled(false);
         this.fxPool[f.kind].push(f.mesh);
@@ -1082,7 +1244,8 @@ export class SceneRenderer {
 
   applyAccessibility(): void {
     const s = this.settings();
-    this.color?.set(s.a11y.colorblind, s.a11y.colorblindStrength, s.video.brightness);
+    this.color?.set(s.a11y.colorblind, s.a11y.colorblindStrength, s.video.brightness, this.grade);
+    this.applyMotionBlur();
   }
 
   /** Draw-call and triangle counts, for the debug overlay and performance tests. */
@@ -1127,7 +1290,8 @@ export class SceneRenderer {
     this.projectileMeshes = [];
     this.arcDots = [];
     this.fx = [];
-    this.fxPool = { tracer: [], flash: [], explosion: [], spark: [] };
+    this.fxPool = { tracer: [], flash: [], explosion: [], spark: [], dust: [], splash: [] };
     this.shadows = null;
+    this.motionBlur = null;
   }
 }
