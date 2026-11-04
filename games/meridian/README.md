@@ -36,7 +36,7 @@ The app is a small Electron wrapper (`desktop/main.cjs`) that serves `dist/` fro
 ```bash
 python -m venv .venv && .venv/bin/pip install -r assets-src/blender/requirements.txt
 .venv/bin/python -I assets-src/blender/render_backgrounds.py --only ch03 --fast   # quick preview of one
-.venv/bin/python -I assets-src/blender/render_backgrounds.py --splash            # everything, final quality
+.venv/bin/python -I assets-src/blender/render_backgrounds.py                     # everything, final quality
 ```
 Writes `public/backgrounds/` (key art, per-chapter 360° panoramas and cards). Scene colours come from `assets-src/blender/palettes.json`, which a unit test keeps equal to each chapter's sky. See `docs/art-pipeline.md`.
 

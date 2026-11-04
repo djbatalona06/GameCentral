@@ -1034,30 +1034,6 @@ def save_webp(png, out, size=None, quality=82):
     print(f"  wrote {os.path.relpath(out, GAME)} ({os.path.getsize(out) // 1024} KB, {im.size[0]}x{im.size[1]})")
 
 
-def splash(png, out, size=2732):
-    """Phone app splash: the key art filling a square, the title in the middle (Capacitor crops the edges)."""
-    from PIL import Image, ImageDraw, ImageFilter, ImageFont
-    im = Image.open(png).convert("RGB")
-    s = min(im.size)
-    left = (im.size[0] - s) // 2 + int(s * 0.12)
-    im = im.crop((left, 0, left + s, s)).resize((size, size), Image.LANCZOS)
-    shade = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(shade).ellipse((size * 0.2, size * 0.38, size * 0.8, size * 0.62), fill=150)
-    shade = shade.filter(ImageFilter.GaussianBlur(size * 0.06))
-    im = Image.composite(Image.new("RGB", (size, size), (10, 12, 16)), im, shade)
-    d = ImageDraw.Draw(im)
-    font = None
-    for f in ("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf", "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"):
-        if os.path.exists(f):
-            font = ImageFont.truetype(f, size // 12)
-            break
-    text = "M E R I D I A N"
-    bbox = d.textbbox((0, 0), text, font=font)
-    d.text(((size - (bbox[2] - bbox[0])) / 2, size * 0.5 - (bbox[3] - bbox[1]) / 2), text, fill=(233, 185, 73), font=font)
-    im.save(out, "PNG", optimize=True)
-    print(f"  wrote {os.path.relpath(out, GAME)}")
-
-
 def run(scene_id, args, palettes, tmp):
     pal = palettes[scene_id]
     fast = args.fast
@@ -1084,8 +1060,6 @@ def run(scene_id, args, palettes, tmp):
         render_to(sc, view, w, h, 16 if fast else 96, png)
         save_webp(png, os.path.join(out, "key-art.webp"), quality=80)
         save_webp(png, os.path.join(out, "key-art-sm.webp"), (1280, 720), quality=78)
-        if args.splash:
-            splash(png, os.path.join(GAME, "resources", "splash.png"))
         return
     set_view(sc, False)
     pano = camera_pano(sc, 8.0 if scene_id not in ("ch03", "ch05", "ch06") else 40.0)
@@ -1115,7 +1089,6 @@ def main():
     ap.add_argument("--out", default=os.path.join(GAME, "public", "backgrounds"))
     ap.add_argument("--tmp", default=os.path.join(HERE, ".render-tmp"))
     ap.add_argument("--fast", action="store_true", help="small, noisy preview renders")
-    ap.add_argument("--splash", action="store_true", help="also rebuild resources/splash.png from the key art")
     args = ap.parse_args(argv)
     with open(os.path.join(HERE, "palettes.json")) as f:
         palettes = {k: v for k, v in json.load(f).items() if not k.startswith("_")}

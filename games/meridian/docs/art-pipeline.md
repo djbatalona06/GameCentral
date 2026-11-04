@@ -56,7 +56,7 @@ The menu key art and every chapter's distant backdrop are rendered by `assets-sr
 
 1. **Install** (once): `python -m venv .venv && .venv/bin/pip install -r assets-src/blender/requirements.txt`
 2. **Preview** one scene quickly: `.venv/bin/python -I assets-src/blender/render_backgrounds.py --only ch05 --fast`. The renders also land in `assets-src/blender/.render-tmp/` as PNGs for a close look.
-3. **Final quality** for everything: drop `--fast` (about 20 to 40 minutes on four cores). Add `--splash` to rebuild the phone splash from the key art, then run `npm run icons`.
+3. **Final quality** for everything: drop `--fast` (about 20 to 40 minutes on four cores; the key art takes longest because of its light shafts).
 
 How it works:
 - **Sky:** a float image made in NumPy from the chapter's colours in `palettes.json` (the same gradient as `src/render/Sky.ts`), plus clouds, stars and the sun's glow. It lights the scene too.
