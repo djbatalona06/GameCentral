@@ -35,8 +35,9 @@ page.on("console", (m) => {
 
 const shot = (name) => page.screenshot({ path: `${OUT}${name}.png` });
 const game = (fn, arg) => page.evaluate(fn, arg);
+// A phone taps (touch events). A mouse click here would rightly switch the game to desktop mode.
 const click = async (sel) => {
-  await page.locator(sel).first().click();
+  await page.locator(sel).first().tap();
   await page.waitForTimeout(250);
 };
 
@@ -56,22 +57,28 @@ async function holdStick(dx, dy, ms) {
 }
 
 try {
-  // 1. First run accessibility setup.
+  // 1. The very first launch opens on the title (home) screen, not a settings page.
   await page.goto(`${BASE}?debug=1`);
-  await page.waitForSelector('[data-screen="firstrun"]', { timeout: 30000 });
-  await shot("01-first-run");
-  check("first-run accessibility screen shows", true);
-  await click('[data-preset="hearing"]');
-  check("hearing preset applied", await game(() => window.__meridian.settings.a11y.soundIndicators === true));
-  await click('[data-action="continue"]');
-
-  // 2. Title and main menu.
-  await page.waitForSelector('[data-screen="title"]');
-  await page.waitForTimeout(800);
+  await page.waitForSelector('[data-screen="title"]', { timeout: 30000 });
+  check("first launch opens on the title screen", (await page.locator('[data-screen="firstrun"]').count()) === 0);
+  check("phone title says Tap to start", (await page.locator('[data-action="start"]').textContent()) === "Tap to start");
+  await page.waitForTimeout(1200);
   await shot("02-title");
   await click('[data-action="start"]');
   await page.waitForSelector('[data-screen="main-menu"]');
+  await page.waitForTimeout(500);
+  check("main menu suggests Quick setup to new players", await page.locator('[data-role="setup-hint"]').isVisible());
   await shot("03-main-menu");
+
+  // 2. Quick setup (the old first-run page) from the main menu.
+  await click('[data-action="quick-setup"]');
+  await page.waitForSelector('[data-screen="firstrun"]');
+  await shot("01-quick-setup");
+  await click('[data-preset="hearing"]');
+  check("hearing preset applied", await game(() => window.__meridian.settings.a11y.soundIndicators === true));
+  await click('[data-screen="firstrun"] [data-action="continue"]');
+  await page.waitForSelector('[data-screen="main-menu"]');
+  check("Quick setup hint goes away once seen", !(await page.locator('[data-role="setup-hint"]').isVisible()));
 
   // 3. New game -> slot 1 -> Explorer.
   await click('[data-action="new-game"]');
@@ -346,6 +353,60 @@ try {
   const dz1 = await dp.evaluate(() => window.__meridian.sim.player.pos.z);
   check("keyboard W moves Ines on desktop", dz1 > dz0 + 2, `z ${dz0.toFixed(2)} -> ${dz1.toFixed(2)}`);
   check("no touch controls on desktop", (await dp.locator(".touch-controls.hidden").count()) === 1);
+  check("desktop shows Click to look around", await dp.locator('[data-role="click-to-look"]').isVisible());
+
+  // Shooter style: A sidesteps (the hero keeps facing the camera) and the first click only captures the mouse.
+  const sideBefore = await dp.evaluate(() => ({ yaw: window.__meridian.sim.player.yaw, cam: window.__meridian.sim.cam.yaw, x: window.__meridian.sim.player.pos.x, shots: window.__meridian.sim.stats.shots }));
+  await dp.keyboard.down("KeyA");
+  await dp.waitForFunction((x) => Math.abs(window.__meridian.sim.player.pos.x - x) > 1.5, sideBefore.x, { timeout: 10000 }).catch(() => undefined);
+  await dp.keyboard.up("KeyA");
+  const sideAfter = await dp.evaluate(() => ({ yaw: window.__meridian.sim.player.yaw, cam: window.__meridian.sim.cam.yaw, x: window.__meridian.sim.player.pos.x }));
+  const facingDiff = Math.abs(Math.atan2(Math.sin(sideAfter.yaw - sideAfter.cam), Math.cos(sideAfter.yaw - sideAfter.cam)));
+  check("A sidesteps while facing the camera", Math.abs(sideAfter.x - sideBefore.x) > 1.5 && facingDiff < 0.15, `dx ${(sideAfter.x - sideBefore.x).toFixed(2)}, facing off by ${facingDiff.toFixed(2)} rad`);
+  await dp.mouse.click(640, 360);
+  await dp.waitForTimeout(500);
+  const locked = await dp.evaluate(() => document.pointerLockElement?.id === "game");
+  check("first click does not fire", (await dp.evaluate(() => window.__meridian.sim.stats.shots)) === sideBefore.shots);
+  if (locked) {
+    const cam0 = await dp.evaluate(() => window.__meridian.sim.cam.yaw);
+    for (let i = 0; i < 10; i++) await dp.mouse.move(640 + (i + 1) * 30, 360);
+    await dp.waitForTimeout(400);
+    const cam1 = await dp.evaluate(() => ({ cam: window.__meridian.sim.cam.yaw, hero: window.__meridian.sim.player.yaw }));
+    check("moving the mouse right turns the camera and the hero right", cam1.cam > cam0 + 0.1 && Math.abs(cam1.hero - cam1.cam) < 0.3, `cam ${cam0.toFixed(2)} -> ${cam1.cam.toFixed(2)}, hero ${cam1.hero.toFixed(2)}`);
+  } else {
+    // Headless browsers can't capture the mouse, so pretend it is captured and send real mouse moves.
+    const cam0 = await dp.evaluate(() => {
+      Object.defineProperty(document, "pointerLockElement", { configurable: true, get: () => document.getElementById("game") });
+      return window.__meridian.sim.cam.yaw;
+    });
+    for (let i = 0; i < 12; i++) {
+      await dp.evaluate(() => window.dispatchEvent(new MouseEvent("mousemove", { movementX: 40, movementY: 0 })));
+      await dp.waitForTimeout(30);
+    }
+    await dp.waitForFunction((c) => window.__meridian.sim.cam.yaw > c + 0.3, cam0, { timeout: 5000 }).catch(() => undefined);
+    await dp.waitForTimeout(400);
+    const cam1 = await dp.evaluate(() => ({ cam: window.__meridian.sim.cam.yaw, hero: window.__meridian.sim.player.yaw }));
+    check("moving the mouse right turns the camera and the hero right", cam1.cam > cam0 + 0.3 && Math.abs(cam1.hero - cam1.cam) < 0.3, `cam ${cam0.toFixed(2)} -> ${cam1.cam.toFixed(2)}, hero ${cam1.hero.toFixed(2)} (simulated mouse capture)`);
+    await dp.evaluate(() => delete document.pointerLockElement);
+  }
+
+  // Captions and the button prompt never overlap.
+  await dp.evaluate(() => {
+    const s = window.__meridian.sim;
+    s.events.push({ type: "dialogue", line: { speaker: "Bram", text: "Catalina's ship has been lost for four hundred years. Try not to join her, and mind the rocks." }, say: null });
+    s.events.push({ type: "dialogue", line: { speaker: "Mercenary", text: "Grenade out!", bark: true, duration: 3 }, say: null });
+  });
+  await dp.waitForTimeout(400);
+  // The HUD redraws the prompt every frame, so show one and measure in the same step.
+  const boxes = await dp.evaluate(() => {
+    const pr = document.querySelector('[data-role="prompt"]');
+    pr.innerHTML = "<kbd>E</kbd>Climb";
+    pr.classList.add("show");
+    return ["subtitles", "bark", "prompt"].map((r) => document.querySelector(`[data-role="${r}"]`).getBoundingClientRect().toJSON());
+  });
+  const overlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  check("subtitle, shout and prompt don't overlap", boxes[0].height > 0 && boxes[1].height > 0 && !overlap(boxes[0], boxes[1]) && !overlap(boxes[0], boxes[2]) && !overlap(boxes[1], boxes[2]), JSON.stringify(boxes.map((b) => [Math.round(b.top), Math.round(b.bottom)])));
+  await dp.screenshot({ path: `${OUT}desktop-captions.png` });
   // Computers can be any shape: a tall window shows no rotate prompt and the game keeps playing.
   await dp.setViewportSize({ width: 600, height: 900 });
   await dp.waitForTimeout(600);

@@ -70,6 +70,8 @@ export class Game {
   private gyro = { beta: 0, gamma: 0, active: false };
   /** Desktop (keyboard + mouse) or touch. Starts from the device type and follows what the player actually uses. */
   private inputMode: "touch" | "desktop" = "desktop";
+  /** Seconds left of the short game freeze after a knockout. */
+  private hitStop = 0;
 
   get settings(): Settings {
     return this.settingsStore.current;
@@ -629,6 +631,8 @@ export class Game {
 
   private applyInputMode(): void {
     const touch = this.inputMode === "touch";
+    // Until a gamepad is used, prompts and tips match the mode (keys on a computer, buttons on a phone).
+    if (this.input.device !== "gamepad") this.input.device = touch ? "touch" : "keyboard";
     this.touch.show(touch);
     this.keyboard.pointerLookEnabled = !touch;
     if (touch) this.keyboard.exitPointerLock();
@@ -860,6 +864,8 @@ export class Game {
         break;
       case "hitmarker":
         this.gamepad.rumble(0, 0.3, 40);
+        // A tiny freeze on a knockout makes the hit feel solid (skipped with Reduce motion).
+        if (ev.kill && !this.settings.a11y.reduceMotion) this.hitStop = 0.06;
         break;
       case "treasure":
         if (vib) vibrate([20, 40, 20]);
@@ -892,7 +898,8 @@ export class Game {
     this.keyboard.playing = this.state === "playing";
     const sim = this.sim;
     if (sim && this.state === "playing") {
-      this.acc += dt;
+      if (this.hitStop > 0) this.hitStop -= dt;
+      else this.acc += dt;
       const step = 1 / TUNING.sim.hz;
       let steps = 0;
       while (this.acc >= step && steps < 4) {

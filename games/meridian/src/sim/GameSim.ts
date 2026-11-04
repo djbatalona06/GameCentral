@@ -50,6 +50,7 @@ import { type SearchlightState, beamYaw, inBeam, newSearchlight, stepSearchlight
 import { type Action, type ChapterDef, type Line, type CameraShot, type MusicMood, WORLD_ACTIONS } from "./story/types";
 import type { InteractDef, WeatherDef } from "./world/types";
 import { readingTime, splitCaption } from "./story/captions";
+import { CHATTER_IDLE_AFTER, Chatter, type ChatterKind } from "./story/chatter";
 
 // ------------------------------------------------------------------ public types
 
@@ -243,6 +244,12 @@ export class GameSim {
   private dialogueQueue: Line[] = [];
   private dialogueTimer = 0;
   private rand: () => number;
+  private chatterRand: () => number;
+  private chatter: Chatter;
+  /** Seconds since the player last moved or turned the camera (for idle chatter). */
+  private idleTime = 0;
+  private chatterTreasure = false;
+  private wasInCombat = false;
   private comboStep = 0;
   private comboTimer = 0;
   private meleeCooldown = 0;
@@ -271,6 +278,9 @@ export class GameSim {
     this.chapter = chapter;
     this.opts = opts;
     this.rand = rng(seed);
+    // Chatter has its own random stream, so it never changes how enemies or anything else behave.
+    this.chatterRand = rng(seed ^ 0x5eed);
+    this.chatter = new Chatter(chapter.id);
     this.world = new World(chapter.build());
     const d = this.world.data;
     this.movers = d.movers.map(newMover);
@@ -587,6 +597,7 @@ export class GameSim {
     }
 
     if (this.dead) return;
+    this.updateChatter(dt, input);
 
     const p = this.player;
     this.updateMovers(dt);
@@ -671,6 +682,26 @@ export class GameSim {
       // In the jeep the camera sits further back and a little higher to show the road ahead.
       hints: this.riding ? [VEHICLE_CAM] : this.world.data.camHints,
     };
+  }
+
+  /** Short unscripted lines while exploring, after finding treasure, or after a close fight. */
+  private updateChatter(dt: number, input: InputFrame): void {
+    const active = Math.hypot(input.move.x, input.move.y) > 0.1 || Math.abs(input.look.yaw) + Math.abs(input.look.pitch) > 1e-4;
+    this.idleTime = active ? 0 : this.idleTime + dt;
+    const combat = this.inCombat;
+    const closeCall = this.wasInCombat && !combat && this.health.hp / this.health.max < 0.35;
+    this.wasInCombat = combat;
+    const treasure = this.chatterTreasure;
+    this.chatterTreasure = false;
+    if (!this.opts.chatter || this.replaying || combat || this.riding) return;
+    // Never talk over the story.
+    if (this.currentLine || this.dialogueQueue.length) return;
+    const kind: ChatterKind | null = closeCall ? "closeCall" : treasure ? "treasure" : this.idleTime > CHATTER_IDLE_AFTER ? "idle" : null;
+    if (!kind) return;
+    const line = this.chatter.pick(kind, this.time, this.chatterRand);
+    if (!line) return;
+    if (kind === "idle") this.idleTime = 0;
+    this.emit({ type: "dialogue", line, say: line.text });
   }
 
   /** Shooter style: keyboard-and-mouse players turn the hero with the mouse. */
@@ -1193,6 +1224,7 @@ export class GameSim {
       if (this.treasures.has(t.id) || dist(t.pos, add(p.pos, { x: 0, y: 0.6, z: 0 })) > 1.6) continue;
       if (pressed || this.opts.autoPickup) {
         this.treasures.add(t.id);
+        this.chatterTreasure = true;
         this.emit({ type: "treasure", id: t.id, name: t.name, description: t.description });
         return;
       }

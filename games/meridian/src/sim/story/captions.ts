@@ -1,8 +1,8 @@
 // Breaks long dialogue lines into short captions (at most about two lines on screen each), so a
 // subtitle never turns into a wall of text that covers the game.
 
-/** Longest caption chunk, in characters. Roughly two lines of subtitle text. */
-export const CAPTION_MAX = 84;
+/** Longest caption chunk, in characters: about two lines of subtitles on a phone, one or two on a computer. */
+export const CAPTION_MAX = 64;
 
 /** Seconds a caption stays up: a reading-speed estimate with a floor, as before. */
 export const readingTime = (text: string): number => Math.max(2.2, text.split(/\s+/).filter(Boolean).length * 0.32 + 0.8);

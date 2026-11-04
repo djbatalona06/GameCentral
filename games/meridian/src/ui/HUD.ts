@@ -8,6 +8,7 @@ import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, yawOf, sub } from "../sim/math";
 import type { Speaker } from "../sim/story/types";
 import { readingTime } from "../sim/story/captions";
+import { adaptTip, keyLabel } from "./controlText";
 import type { InputFrame } from "../input/actions";
 
 const SPEAKER_COLORS: Record<Speaker, string> = {
@@ -40,6 +41,8 @@ export class HUD {
   /** Reads a line aloud (the whole line once, even when it is shown as several captions). */
   speak: ((text: string, speaker: Speaker) => void) | null = null;
   private barkTimer = 0;
+  private tutorialRaw = "";
+  private tutorialDevice: InputFrame["device"] | null = null;
 
   constructor(parent: HTMLElement, private settings: () => Settings) {
     const wrap = document.createElement("div");
@@ -98,7 +101,8 @@ export class HUD {
         break;
       case "tutorial":
         if (!a.tutorialHints) break;
-        this.q("tutorial").textContent = ev.text;
+        this.tutorialRaw = ev.text;
+        this.tutorialDevice = null; // worded for the current device on the next update
         this.q("tutorial").classList.add("show");
         this.tutorialTimer = Math.max(5, ev.text.split(" ").length * 0.35);
         break;
@@ -219,6 +223,11 @@ export class HUD {
       // Captions fade out first, then free their space in the stack.
       if ((role === "subtitles" || role === "bark") && t < -0.3 && el.firstChild) el.innerHTML = "";
     }
+    // Tips use the right words for the device ("press Space" on a keyboard, "press A" on a pad).
+    if (this.tutorialRaw && this.tutorialDevice !== device) {
+      this.tutorialDevice = device;
+      this.q("tutorial").textContent = adaptTip(this.tutorialRaw, device, s.controls);
+    }
     const subs = this.q("subtitles");
     subs.dataset.size = s.a11y.subtitleSize;
     subs.style.setProperty("--sub-bg", String(s.a11y.subtitleBackground));
@@ -268,7 +277,10 @@ export class HUD {
     // Context prompt with the right button name for the current device.
     const pr = this.q("prompt");
     if (sim.prompt && !sim.cutscene) {
-      const key = PROMPT_KEYS[device][sim.prompt.action];
+      const action = sim.prompt.action;
+      // Keyboard players see the key they actually bound (remapping included).
+      const bound = device === "keyboard" ? s.controls.keys[action]?.[0] : undefined;
+      const key = bound ? keyLabel(bound) : PROMPT_KEYS[device][action];
       pr.innerHTML = "";
       if (device !== "touch") {
         const k = document.createElement("kbd");
@@ -341,6 +353,8 @@ export class HUD {
     this.q("bark").classList.remove("show");
     this.subtitleTimer = 0;
     this.barkTimer = 0;
+    this.tutorialRaw = "";
+    this.tutorialDevice = null;
     this.q("toasts").innerHTML = "";
     this.q("damage").innerHTML = "";
     this.q("sounds").innerHTML = "";

@@ -3,6 +3,7 @@
 import { ACTION_LABELS, BUTTON_ACTIONS, type ButtonAction } from "../input/actions";
 import { PRESETS, type Settings } from "../core/Settings";
 import { DIFFICULTY_NAMES } from "../sim/GameSim";
+import { keyLabel, padName } from "./controlText";
 
 type Tab = "a11y" | "gameplay" | "controls" | "audio" | "video";
 
@@ -83,6 +84,7 @@ export const OPTIONS: Option[] = [
   { tab: "audio", label: "Mono audio", desc: "Plays everything in both ears.", type: "toggle", get: (s) => s.audio.mono, set: (s, v) => (s.audio.mono = v as boolean) },
   { tab: "audio", label: "Lower music during dialogue", type: "toggle", get: (s) => s.audio.duck, set: (s, v) => (s.audio.duck = v as boolean) },
   { tab: "audio", label: "Night mode", desc: "Evens out loud and quiet sounds so you can play at low volume.", type: "toggle", get: (s) => s.audio.nightMode, set: (s, v) => (s.audio.nightMode = v as boolean) },
+  { tab: "audio", label: "Character chatter", desc: "Short extra lines from Ines and Bram while you explore.", type: "toggle", get: (s) => s.gameplay.chatter, set: (s, v) => (s.gameplay.chatter = v as boolean) },
 
   // Video
   { tab: "video", label: "Quality", desc: "Auto picks a level for your device. Applies on next level load.", type: "select", options: [{ value: "auto", label: "Auto" }, { value: "low", label: "Low (best battery)" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }, { value: "ultra", label: "Ultra (desktop)" }], get: (s) => s.video.quality, set: (s, v) => (s.video.quality = v as Settings["video"]["quality"]) },
@@ -206,7 +208,7 @@ export function renderSettingsTab(panel: HTMLElement, tab: Tab, hooks: SettingsS
       for (const dev of ["keys", "pad"] as const) {
         const b = document.createElement("button");
         b.className = "binding";
-        const current = dev === "keys" ? s.controls.keys[a].join(" / ") : s.controls.pad[a].map(padName).join(" / ");
+        const current = dev === "keys" ? s.controls.keys[a].map(keyLabel).join(" / ") : s.controls.pad[a].map(padName).join(" / ");
         b.textContent = current || "Unbound";
         b.setAttribute("aria-label", `${ACTION_LABELS[a]} ${dev === "keys" ? "keyboard" : "controller"}: ${current}. Press to change.`);
         b.addEventListener("click", () => {
@@ -221,5 +223,4 @@ export function renderSettingsTab(panel: HTMLElement, tab: Tab, hooks: SettingsS
   }
 }
 
-const PAD_NAMES = ["A", "B", "X", "Y", "LB", "RB", "LT", "RT", "View", "Menu", "L3", "R3", "D-up", "D-down", "D-left", "D-right"];
-export const padName = (i: number) => PAD_NAMES[i] ?? `B${i}`;
+export { padName } from "./controlText";

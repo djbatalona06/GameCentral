@@ -128,7 +128,9 @@
   /* Leave room for the objective (top left) and ammo (top right) panels. */
   width: min(560px, calc(100vw - 2 * (min(30vw, 340px) + 32px)));
 }
-.top-stack { top: max(14px, env(safe-area-inset-top)); }
+/* Desktop: below the objective / ammo row. Touch: right at the top (those panels are hidden there). */
+.top-stack { top: max(70px, calc(env(safe-area-inset-top) + 62px)); }
+body.touch .hud .top-stack { top: max(14px, env(safe-area-inset-top)); }
 .bottom-stack {
   bottom: max(6%, calc(env(safe-area-inset-bottom) + 24px));
   width: min(820px, calc(100vw - 32px));
