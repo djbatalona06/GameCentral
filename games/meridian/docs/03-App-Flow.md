@@ -3,8 +3,7 @@
 ## Screen map
 ```
 Boot
- └─ First launch only: Accessibility setup (text size, subtitles, narration, presets)
-     └─ Title ("Tap to start", unlocks audio)
+ └─ Title (home screen, every launch: "Tap to start" on phones, "Click or press any key" on computers; unlocks audio)
          └─ Main menu
              ├─ Continue ───────────────┐
              ├─ New game → Slot → Difficulty ─┤
@@ -12,6 +11,7 @@ Boot
              ├─ Chapter select ─────────┤ (completed + current chapters)
              ├─ Settings (tabs: Accessibility, Gameplay, Controls, Audio, Video)
              │    └─ Controls → Move touch buttons (layout editor)
+             ├─ Quick setup (text size, subtitles, narration, presets; a hint suggests it until opened once)
              └─ Credits
                                         ▼
                                    Playing (HUD + touch controls)
