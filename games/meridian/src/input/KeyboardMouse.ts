@@ -57,8 +57,6 @@ export class KeyboardMouse {
   playing = false;
   /** Called when the keyboard or a real mouse is used, so the game can switch to desktop mode. */
   onDesktopUsed: (() => void) | null = null;
-  /** Called whenever pointer lock starts or stops. */
-  onLockChange: ((locked: boolean) => void) | null = null;
 
   constructor(private src: InputSource, private canvas: HTMLCanvasElement, private settings: () => Settings) {
     window.addEventListener("keydown", this.onKeyDown);
@@ -72,7 +70,6 @@ export class KeyboardMouse {
       if (this.pointerLookEnabled) this.src.tapped.add("swapWeapon");
       e.preventDefault();
     }, { passive: false });
-    document.addEventListener("pointerlockchange", () => this.onLockChange?.(this.locked));
     // Only a real mouse or pen counts as "desktop": touchscreens also send pretend mouse clicks.
     window.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "touch") this.lastTouch = performance.now();
