@@ -47,22 +47,8 @@ Grounded, sun-baked realism without image files: physically based materials pain
 - Red vignette = low health. Arcs = direction of damage. Labels on a ring = sounds (when sound indicators are on).
 - A slim bar under the top HUD shows the **Spotted** meter (searchlights) or the **Jeep** condition, only when relevant.
 
-## HUD layout (portrait phone)
-```
-┌────────────────────────┐
-│ OBJECTIVE ▌ …   [GOAL][II]│
-│ Ammo 15/45              │
-│ Tutorial card (full width)│
-│ Subtitles (above controls)│
-│        reticle          │
-│ toasts       [THROW][RELOAD]│
-│        [USE] [FIRE][COVER]│
-│ (stick)  [AIM]   [JUMP] │
-│  [CROUCH] [MELEE]       │
-└────────────────────────┘
-```
-- The camera keeps the same *horizontal* view as landscape (wider vertical view), so you can still see the sides.
-- Buttons live in the bottom third; the layout editor saves portrait and landscape positions separately.
+## Screen shape
+The game is **landscape only**: the HUD and touch layouts are designed for a wide screen. A touch phone held upright shows a full-screen "Turn your phone sideways" prompt and the game pauses until it is turned. Computers can use any window shape; very narrow windows keep the horizontal view by widening the camera.
 
 ## Touch controls
 - A **floating stick** appears where the left thumb lands. Pushing past the ring sprints.

@@ -11,6 +11,7 @@ import { Scene } from "@babylonjs/core/scene";
 import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { FrameGovernor, type FrameStats } from "./FrameGovernor";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import { CascadedShadowGenerator } from "@babylonjs/core/Lights/Shadows/cascadedShadowGenerator";
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
@@ -103,6 +104,9 @@ export class SceneRenderer {
   private bram: Figure | null = null;
   private jeep: Mesh | null = null;
   private jeepParked: { pos: Vector3; yaw: number } | null = null;
+  /** Scratch vectors, reused every frame so the render loop does not allocate. */
+  private readonly tmpA = new Vector3();
+  private readonly tmpB = new Vector3();
   private enemies = new Map<string, EnemyVisual>();
   private pursuers = new Map<string, PursuerVisual>();
   private searchlights: Searchlights | null = null;
@@ -118,9 +122,9 @@ export class SceneRenderer {
   private time = 0;
   private shake = 0;
   private settings: () => Settings;
-  private baseScaling = 1;
-  scaling = 1;
-  private fpsWindow: number[] = [];
+  /** Frame pacing, frame statistics and dynamic resolution (see FrameGovernor.ts). */
+  readonly governor = new FrameGovernor();
+  private contextLost = false;
   private instrumentation: SceneInstrumentation | null = null;
 
   constructor(canvas: HTMLCanvasElement, settings: () => Settings) {
@@ -128,21 +132,44 @@ export class SceneRenderer {
     this.engine = new Engine(canvas, true, { stencil: true, preserveDrawingBuffer: false, powerPreference: "high-performance" }, false);
     this.applyQuality();
     window.addEventListener("resize", () => this.engine.resize());
+    // Phones can take the GPU away (another app, low memory). Drawing into a lost context only
+    // throws errors, so wait for Babylon to rebuild its resources and then carry on.
+    this.engine.onContextLostObservable.add(() => (this.contextLost = true));
+    this.engine.onContextRestoredObservable.add(() => {
+      this.contextLost = false;
+      this.engine.setHardwareScalingLevel(this.governor.currentScaling);
+    });
   }
 
   /** Applies the quality tier's resolution. "Auto" guesses from the device. */
   applyQuality(): void {
     this.tier = TIERS[this.resolvedQuality()];
     const dpr = Math.min(window.devicePixelRatio || 1, this.tier.maxDpr);
-    this.baseScaling = 1 / dpr;
-    this.scaling = this.baseScaling;
-    this.engine.setHardwareScalingLevel(this.scaling);
+    this.governor.reset(1 / dpr);
+    this.engine.setHardwareScalingLevel(this.governor.currentScaling);
+  }
+
+  /** Current frames per second, measured by the game (Babylon's own counter never runs here). */
+  get fps(): number {
+    return this.governor.stats().fps;
+  }
+
+  /** True when this animation frame should be drawn (the frame-rate cap, correct on any refresh rate). */
+  shouldRender(nowMs: number): boolean {
+    const v = this.settings().video;
+    this.governor.configure({ targetFps: v.fpsCap, dynamic: v.dynamicResolution });
+    return this.governor.shouldRender(nowMs);
   }
 
   resolvedQuality(): Tier {
     const q = this.settings().video.quality;
     if (q !== "auto") return q;
-    return autoTier(navigator.hardwareConcurrency || 4, /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent));
+    const ua = navigator.userAgent;
+    return autoTier(navigator.hardwareConcurrency || 4, /Android|iPhone|iPad|Mobile/i.test(ua), {
+      memoryGb: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+      ios: /iPhone|iPad/i.test(ua),
+      gpu: this.engine.getGlInfo().renderer,
+    });
   }
 
   // ------------------------------------------------------------------ level construction
@@ -219,7 +246,7 @@ export class SceneRenderer {
       pl.bloomEnabled = tier.bloom;
       pl.bloomThreshold = 0.85;
       pl.bloomWeight = 0.25;
-      pl.bloomKernel = 48;
+      pl.bloomKernel = 32;
       pl.imageProcessingEnabled = true;
     }
     if (tier.ssao) {
@@ -258,7 +285,7 @@ export class SceneRenderer {
         sm.diffuseTexture = gridTexture(this.scene!, HIGH_CONTRAST_ENV, `grid-${key}`);
         sm.specularColor = new Color3(0.04, 0.04, 0.04);
         m = sm;
-      } else m = proceduralPBR(this.scene!, name as MatName, this.tier.textureSize);
+      } else m = proceduralPBR(this.scene!, name as MatName, this.tier.textureSize, this.tier.anisotropy);
       this.envMats.set(key, m);
     }
     return m;
@@ -534,7 +561,7 @@ export class SceneRenderer {
     if (data.scroll) {
       const zs = data.boxes.map((b) => (b.min.z + b.max.z) / 2);
       const centre = (Math.min(...zs) + Math.max(...zs)) / 2;
-      this.scrolling = new Scrolling(scene, data.scroll.speed, proceduralPBR(scene, "rock", this.tier.textureSize), centre);
+      this.scrolling = new Scrolling(scene, data.scroll.speed, proceduralPBR(scene, "rock", this.tier.textureSize, this.tier.anisotropy), centre);
     }
     if (data.weather.length) this.weather = new Weather(scene, this.tier.particles);
   }
@@ -570,7 +597,7 @@ export class SceneRenderer {
   render(dt: number): void {
     const sim = this.sim;
     const scene = this.scene;
-    if (!sim || !scene || !this.camera) return;
+    if (!sim || !scene || !this.camera || this.contextLost) return;
     this.time += dt;
     this.syncWorld(dt);
     this.syncPlayer(dt);
@@ -580,8 +607,15 @@ export class SceneRenderer {
     this.syncSetPieces(dt);
     this.syncFx(dt);
     this.syncCamera(dt);
+    const t0 = performance.now();
+    // beginFrame/endFrame keep Babylon's clock (engine.getDeltaTime, used by the water) ticking,
+    // because the game drives its own animation-frame loop instead of engine.runRenderLoop.
+    this.engine.beginFrame();
     scene.render();
-    this.dynamicResolution();
+    this.engine.endFrame();
+    const t1 = performance.now();
+    const next = this.governor.record(t1, t1 - t0);
+    if (next !== null) this.engine.setHardwareScalingLevel(next);
   }
 
   private syncWorld(dt: number): void {
@@ -621,7 +655,9 @@ export class SceneRenderer {
       f.mesh.rotation.x += dt * 0.6;
       if (f.t > 1.6) f.mesh.setEnabled(false);
     }
-    this.falling = this.falling.filter((f) => f.t <= 1.6);
+    let alive = 0;
+    for (const f of this.falling) if (f.t <= 1.6) this.falling[alive++] = f;
+    this.falling.length = alive;
     sim.world.crates.forEach((c, i) => {
       const m = this.crateMeshes[i];
       if (m) m.position.set((c.min.x + c.max.x) / 2, (c.min.y + c.max.y) / 2, (c.min.z + c.max.z) / 2);
@@ -708,7 +744,7 @@ export class SceneRenderer {
         ev.laser.setEnabled(false);
         continue;
       }
-      const now = v(e.pos);
+      const now = this.tmpA.set(e.pos.x, e.pos.y, e.pos.z);
       ev.speed = dt > 0 ? Math.min(8, Vector3.Distance(now, ev.last) / dt) : 0;
       ev.last.copyFrom(now);
       // Far-away characters hold their pose to save time on phones.
@@ -727,11 +763,12 @@ export class SceneRenderer {
       }
       // Flash white during a melee wind-up (counter cue), red when hit.
       const flash = e.counterable ? 0.9 : e.hitFlash > 0 ? 0.6 : 0;
-      f.mat.emissiveColor = e.counterable ? new Color3(flash, flash, flash) : new Color3(flash, flash * 0.1, flash * 0.1);
+      if (e.counterable) f.mat.emissiveColor.copyFromFloats(flash, flash, flash);
+      else f.mat.emissiveColor.copyFromFloats(flash, flash * 0.1, flash * 0.1);
       const tagged = e.alive && e.tagged;
       f.mesh.renderOutline = tagged;
       if (tagged) {
-        f.mesh.outlineColor = new Color3(1, 0.85, 0.2);
+        f.mesh.outlineColor.copyFromFloats(1, 0.85, 0.2);
         f.mesh.outlineWidth = 0.03;
       }
       // Suspicion meter above the head.
@@ -741,7 +778,8 @@ export class SceneRenderer {
         ev.meter.position.set(e.pos.x, e.pos.y + e.def.height + 0.35, e.pos.z);
         const s = Math.min(1, e.suspicion);
         ev.meter.scaling.x = Math.max(0.05, s);
-        ev.meterMat.emissiveColor = e.aware ? new Color3(1, 0.1, 0.1) : new Color3(1, 1 - s * 0.6, 0.1);
+        if (e.aware) ev.meterMat.emissiveColor.copyFromFloats(1, 0.1, 0.1);
+        else ev.meterMat.emissiveColor.copyFromFloats(1, 1 - s * 0.6, 0.1);
       }
       // Sniper laser telegraph.
       const lasing = e.alive && e.def.laserTime && e.laserTimer > 0.05;
@@ -1011,7 +1049,10 @@ export class SceneRenderer {
         this.fxPool[f.kind].push(f.mesh);
       }
     }
-    this.fx = this.fx.filter((f) => f.life > 0);
+    // Compact in place: a new array every frame would feed the garbage collector.
+    let kept = 0;
+    for (const f of this.fx) if (f.life > 0) this.fx[kept++] = f;
+    this.fx.length = kept;
   }
 
   private syncCamera(dt: number): void {
@@ -1020,30 +1061,21 @@ export class SceneRenderer {
     const s = this.settings();
     const shakeAmt = (this.shake + sim.cam.shake) * s.a11y.cameraShake * (s.a11y.reduceMotion ? 0.2 : 1);
     this.shake = Math.max(0, this.shake - dt * 2.5);
-    const jitter = new Vector3((Math.random() - 0.5) * shakeAmt * 0.15, (Math.random() - 0.5) * shakeAmt * 0.15, 0);
+    const jx = (Math.random() - 0.5) * shakeAmt * 0.15;
+    const jy = (Math.random() - 0.5) * shakeAmt * 0.15;
     if (sim.cam.rail) {
-      cam.position = v(sim.cam.rail.position);
-      cam.setTarget(v(sim.cam.rail.target));
+      const rp = sim.cam.rail.position;
+      const rt = sim.cam.rail.target;
+      cam.position.set(rp.x, rp.y, rp.z);
+      cam.setTarget(this.tmpB.set(rt.x, rt.y, rt.z));
       cam.fov = fovForAspect(0.9, this.engine.getAspectRatio(cam));
       return;
     }
-    cam.position = v(sim.cam.position).add(jitter);
+    const cp = sim.cam.position;
+    cam.position.set(cp.x + jx, cp.y + jy, cp.z);
     const dir = lookDir(sim.cam.yaw, sim.cam.pitch);
-    cam.setTarget(cam.position.add(new Vector3(dir.x, dir.y, dir.z)));
+    cam.setTarget(this.tmpB.set(cam.position.x + dir.x, cam.position.y + dir.y, cam.position.z + dir.z));
     cam.fov = fovForAspect(sim.cam.fov, this.engine.getAspectRatio(cam));
-  }
-
-  private dynamicResolution(): void {
-    const s = this.settings().video;
-    if (!s.dynamicResolution) return;
-    this.fpsWindow.push(this.engine.getFps());
-    if (this.fpsWindow.length < 60) return;
-    const avg = this.fpsWindow.reduce((a, b) => a + b, 0) / this.fpsWindow.length;
-    this.fpsWindow = [];
-    const target = s.fpsCap;
-    if (avg < target * 0.85 && this.scaling < 2) this.scaling = Math.min(2, this.scaling + 0.15);
-    else if (avg > target * 0.97 && this.scaling > this.baseScaling) this.scaling = Math.max(this.baseScaling, this.scaling - 0.05);
-    this.engine.setHardwareScalingLevel(this.scaling);
   }
 
   // ------------------------------------------------------------------ settings & cleanup
@@ -1054,11 +1086,11 @@ export class SceneRenderer {
   }
 
   /** Draw-call and triangle counts, for the debug overlay and performance tests. */
-  stats(): { drawCalls: number; triangles: number; tier: Tier } {
+  stats(): { drawCalls: number; triangles: number; tier: Tier } & FrameStats {
     const scene = this.scene;
     let tris = 0;
     if (scene) for (const m of scene.getActiveMeshes().data) tris += m.getTotalIndices() / 3;
-    return { drawCalls: this.instrumentation?.drawCallsCounter.current ?? 0, triangles: Math.round(tris), tier: this.resolvedQuality() };
+    return { drawCalls: this.instrumentation?.drawCallsCounter.current ?? 0, triangles: Math.round(tris), tier: this.resolvedQuality(), ...this.governor.stats() };
   }
 
   dispose(): void {

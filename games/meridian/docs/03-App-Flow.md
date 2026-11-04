@@ -33,7 +33,7 @@ Boot
 - With narration on, every focused item is read aloud ("Subtitles, on").
 - Pausing happens automatically when the app goes to the background or the mouse is released.
 - In the Android app, the hardware **Back** button acts as Back in menus and as Pause during play.
-- Rotating the phone at any time re-lays out the HUD and touch controls for the new orientation; held buttons are released so nothing gets stuck.
+- The game is landscape only. Holding a touch phone upright pauses the game behind a "Turn your phone sideways" prompt; turning it back resumes by itself (a game the player paused stays paused). Held buttons are released when the game pauses so nothing gets stuck.
 
 ## In-game flow of a chapter
 1. The chapter loads its level and runs its start script (music, objective, intro dialogue, first tutorial).

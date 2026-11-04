@@ -46,7 +46,7 @@ Each feature is mapped to the **Xbox Accessibility Guidelines (XAG 101–118)** 
 | Separate volume sliders (master, music, SFX, voice, UI, world sounds) and mono audio | Audio | 105 Audio accessibility | Basic/Intermediate |
 | Brightness slider | Video | 102 | Basic |
 | Battery mode (30 fps, the default on phones) and quality tiers Low/Medium/High/Ultra | Video | — | — |
-| Play in portrait or landscape; touch layouts and the layout editor remember each orientation separately | Global, Controls | 107 Input (flexible play positions) | Intermediate |
+| Flexible controls: the touch layout editor, two-thumb and one-handed layouts, button size and opacity (the game is landscape only) | Global, Controls | 107 Input (flexible play positions) | Intermediate |
 | Bell puzzle: every note is shown on screen ("Bell 3 (middle)"), the bell swings and glows, and the journal writes the order down. Solvable with no sound at all | Ch5 | 103, 104 | Advanced: puzzles not reliant on audio |
 | Tunnel and avalanche warnings shown as a large on-screen banner (and spoken if voice lines are on), not just a sound | Ch5, Ch6 | 103 | Intermediate |
 | Searchlight "Spotted" meter and jeep condition bar show danger without relying on sound | Ch4, Ch7 | 103 | Intermediate |

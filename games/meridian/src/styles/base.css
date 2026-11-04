@@ -93,3 +93,30 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   letter-spacing: 0.3em;
   color: var(--ink-dim);
 }
+
+/* Landscape only: on a touch phone held upright, a prompt covers the game (the game pauses behind it). */
+.rotate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  text-align: center;
+  background: #0d1117;
+  color: #fff;
+  font-size: var(--fs-body);
+}
+.rotate p { margin: 0; max-width: 28ch; line-height: 1.4; }
+.rotate strong { font-size: calc(22px * var(--text-scale)); }
+.rotate-phone { transform-origin: 32px 26px; animation: rotate-hint 2.4s ease-in-out infinite; }
+@keyframes rotate-hint {
+  0%, 25% { transform: rotate(0); }
+  60%, 100% { transform: rotate(-90deg); }
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  .rotate { display: flex; }
+}

@@ -45,8 +45,9 @@ export class ColorPostProcess {
   mode = 0;
   strength = 1;
   brightness = 1;
+  private attached = true;
 
-  constructor(camera: Camera) {
+  constructor(private readonly camera: Camera) {
     this.pp = new PostProcess("meridianColor", "meridianColor", ["mode", "strength", "brightness"], null, 1, camera);
     this.pp.onApply = (effect) => {
       effect.setInt("mode", this.mode);
@@ -59,5 +60,11 @@ export class ColorPostProcess {
     this.mode = MODES[mode];
     this.strength = strength;
     this.brightness = brightness;
+    // With no colour-blind mode and normal brightness this pass would only copy the image,
+    // which costs a full-screen draw on every frame. Leave it off the camera in that case.
+    const needed = this.mode > 0 || Math.abs(brightness - 1) > 0.001;
+    if (needed && !this.attached) this.camera.attachPostProcess(this.pp);
+    else if (!needed && this.attached) this.camera.detachPostProcess(this.pp);
+    this.attached = needed;
   }
 }

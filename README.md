@@ -21,5 +21,5 @@ npm install
 npm run dev        # then open the address it prints, on your phone or computer
 ```
 
-It plays in landscape or portrait, with touch, a gamepad or keyboard and mouse.
+It is played in landscape (phone held sideways), with touch, a gamepad or keyboard and mouse.
 See [`games/meridian/README.md`](games/meridian/README.md) for controls, tests and the phone app build.
