@@ -68,6 +68,10 @@ export class Game {
   private debug = false;
   private deathTimer = 0;
   private gyro = { beta: 0, gamma: 0, active: false };
+  /** Desktop (keyboard + mouse) or touch. Starts from the device type and follows what the player actually uses. */
+  private inputMode: "touch" | "desktop" = "desktop";
+  /** Seconds left of the short game freeze after a knockout. */
+  private hitStop = 0;
 
   get settings(): Settings {
     return this.settingsStore.current;
@@ -83,6 +87,11 @@ export class Game {
     this.saves = new SaveManager(store);
     // Phones start at a steady 30 fps (cooler, longer battery); players can raise it in Video.
     if (!this.settings.firstRunDone && TouchControls.isTouchDevice()) this.settings.video.fpsCap = 30;
+    // The game always opens on the title (home) screen. Quick setup lives in the main menu.
+    if (!this.settings.firstRunDone) {
+      this.settings.firstRunDone = true;
+      void this.settingsStore.save();
+    }
     const q = params.get("quality");
     if (this.debug && q && ["low", "medium", "high", "ultra", "auto"].includes(q)) this.settings.video.quality = q as Settings["video"]["quality"];
 
@@ -95,6 +104,9 @@ export class Game {
     this.touch = new TouchControls(this.input.touch, s, document.getElementById("touch-root")!);
     this.touch.show(false);
     this.touch.onLayoutChanged = () => this.settingsChanged();
+    this.inputMode = TouchControls.isTouchDevice() ? "touch" : "desktop";
+    this.keyboard.onDesktopUsed = () => this.setInputMode("desktop");
+    this.touch.onTouchUsed = () => this.setInputMode("touch");
     this.audio = new AudioEngine(s);
     this.ui = new UIManager(document.getElementById("ui-root")!, document.getElementById("live")!);
     this.ui.narrate = (t) => this.settings.a11y.menuNarration && this.audio.speak(t, { interrupt: true });
@@ -120,8 +132,7 @@ export class Game {
       }
     }
     this.startMenuBackdrop();
-    if (!this.settings.firstRunDone) this.showFirstRun();
-    else this.showTitle();
+    this.showTitle();
     requestAnimationFrame(this.loop);
   }
 
@@ -240,9 +251,14 @@ export class Game {
     this.renderer.load(this.menuSim);
   }
 
+  /** Quick setup: text size, subtitles and accessibility presets. Opened from the main menu. */
   private showFirstRun(): void {
     this.state = "menu";
-    this.ui.show("firstrun", {
+    if (!this.settings.quickSetupSeen) {
+      this.settings.quickSetupSeen = true;
+      this.settingsChanged();
+    }
+    this.ui.push("firstrun", {
       init: (el) => {
         const s = this.settings;
         for (const [k, p] of Object.entries(PRESETS)) {
@@ -273,23 +289,38 @@ export class Game {
       },
       action: (a) => {
         if (a === "more-settings") this.showSettings("a11y");
-        if (a === "continue") {
-          this.settings.firstRunDone = true;
-          this.settingsChanged();
-          this.showTitle();
-        }
+        if (a === "continue") void this.showMainMenu();
+      },
+      back: () => {
+        void this.showMainMenu();
       },
     });
   }
 
   private showTitle(): void {
     this.state = "menu";
+    let started = false;
+    const start = () => {
+      if (started || this.ui.top !== "title") return;
+      started = true;
+      window.removeEventListener("keydown", onKey);
+      this.audio.unlock();
+      this.audio.setMood("explore");
+      void this.showMainMenu();
+    };
+    // On a computer any key starts, not just Enter on the focused button.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || e.code === "Tab" || e.code === "Escape" || e.code.startsWith("Alt") || e.code.startsWith("Shift")) return;
+      e.preventDefault();
+      start();
+    };
     this.ui.show("title", {
-      action: () => {
-        this.audio.unlock();
-        this.audio.setMood("explore");
-        void this.showMainMenu();
+      init: (el) => {
+        const btn = el.querySelector('[data-action="start"]') as HTMLButtonElement;
+        btn.textContent = TouchControls.isTouchDevice() ? "Tap to start" : "Click or press any key";
+        window.addEventListener("keydown", onKey);
       },
+      action: () => start(),
       back: () => false,
     });
   }
@@ -309,6 +340,7 @@ export class Game {
           info.textContent = `Continue: Chapter ${ch?.number} — ${ch?.title} · ${formatTime(latest.playtimeSec)} played`;
         }
         (el.querySelector('[data-role="storage-warning"]') as HTMLElement).hidden = this.persistent;
+        (el.querySelector('[data-role="setup-hint"]') as HTMLElement).hidden = this.settings.quickSetupSeen;
       },
       action: (a) => {
         if (a === "continue" && latest) this.loadSave(latest);
@@ -316,6 +348,7 @@ export class Game {
         if (a === "load-game") this.showSlots("load");
         if (a === "chapters") void this.showChapters();
         if (a === "settings") this.showSettings("a11y");
+        if (a === "quick-setup") this.showFirstRun();
         if (a === "credits") this.ui.push("credits", { action: () => this.ui.pop() });
       },
       back: () => {
@@ -532,9 +565,7 @@ export class Game {
     this.hud.reset();
     this.hud.show(true);
     if (this.sim.objective) this.hud.setObjective(this.sim.objective.text);
-    const touchDevice = TouchControls.isTouchDevice();
-    this.touch.show(touchDevice);
-    this.keyboard.pointerLookEnabled = !touchDevice;
+    this.applyInputMode();
     this.input.reset();
     this.input.enabled = true;
     this.state = "playing";
@@ -587,8 +618,24 @@ export class Game {
     this.input.enabled = true;
     this.input.reset();
     this.hud.show(true);
-    this.touch.show(TouchControls.isTouchDevice());
+    this.applyInputMode();
     this.applySettings();
+  }
+
+  /** Switches between touch buttons and mouse look when the player changes device mid-game. */
+  private setInputMode(mode: "touch" | "desktop"): void {
+    if (mode === this.inputMode || this.touch.editing) return;
+    this.inputMode = mode;
+    if (this.state === "playing") this.applyInputMode();
+  }
+
+  private applyInputMode(): void {
+    const touch = this.inputMode === "touch";
+    // Until a gamepad is used, prompts and tips match the mode (keys on a computer, buttons on a phone).
+    if (this.input.device !== "gamepad") this.input.device = touch ? "touch" : "keyboard";
+    this.touch.show(touch);
+    this.keyboard.pointerLookEnabled = !touch;
+    if (touch) this.keyboard.exitPointerLock();
   }
 
   private showJournal(): void {
@@ -817,6 +864,8 @@ export class Game {
         break;
       case "hitmarker":
         this.gamepad.rumble(0, 0.3, 40);
+        // A tiny freeze on a knockout makes the hit feel solid (skipped with Reduce motion).
+        if (ev.kill && !this.settings.a11y.reduceMotion) this.hitStop = 0.06;
         break;
       case "treasure":
         if (vib) vibrate([20, 40, 20]);
@@ -846,9 +895,11 @@ export class Game {
       if (this.settingsSaveTimer <= 0) void this.settingsStore.save();
     }
 
+    this.keyboard.playing = this.state === "playing";
     const sim = this.sim;
     if (sim && this.state === "playing") {
-      this.acc += dt;
+      if (this.hitStop > 0) this.hitStop -= dt;
+      else this.acc += dt;
       const step = 1 / TUNING.sim.hz;
       let steps = 0;
       while (this.acc >= step && steps < 4) {
@@ -886,6 +937,7 @@ export class Game {
       this.audio.listener = { pos: sim.cam.position, yaw: sim.cam.yaw };
       this.audio.update(dt, sim, this.state === "playing");
       this.hud.update(dt, sim, this.input.device as InputFrame["device"], this.renderer.fps);
+      this.hud.setClickToLook(this.state === "playing" && this.inputMode === "desktop" && !this.keyboard.locked && !sim.cutscene);
     } else if (this.menuSim) {
       this.audio.update(dt, null, false);
       // Slow orbit over the beach behind the menus.

@@ -24,6 +24,7 @@
 | 18 | Chapters 16–22 (Act III), New Game+, challenge modes, cloud saves | Planned |
 | 19 | Recorded voice acting, audio description of cutscenes | Planned |
 | 20 | Landscape only: turn-your-phone prompt, platform orientation locks, portrait layouts removed, new left-side gun/goal/walk controls | Done |
+| 21 | Clean-up: boot to the home screen (Quick setup in the menu); desktop mouse/keys fixed (touchscreen laptops, first click, shooter style); short captions in stacked HUD lanes with device-aware tips; wildlife, game-feel effects, animated menus and character chatter | Done |
 
 ## How to add a chapter (repeatable recipe)
 1. Copy `src/sim/chapters/ch03.ts` to `chNN.ts`.

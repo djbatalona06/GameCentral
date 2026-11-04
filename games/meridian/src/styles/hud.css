@@ -15,7 +15,7 @@
   position: absolute;
   top: max(14px, env(safe-area-inset-top));
   left: max(16px, env(safe-area-inset-left));
-  max-width: min(46vw, 420px);
+  max-width: min(30vw, 340px);
   padding: 8px 12px;
   border-left: 3px solid var(--accent);
   background: rgba(10, 14, 18, 0.45);
@@ -116,77 +116,113 @@
 .reserve { color: var(--ink-dim); }
 .throwables { font-size: var(--fs-small); color: var(--ink-dim); }
 
-.balance { position: absolute; left: 50%; bottom: 30%; width: 200px; height: 10px; margin-left: -100px; background: rgba(0, 0, 0, 0.5); border-radius: 6px; display: none; }
+/* ---- Stacks: groups of HUD messages that line up instead of sharing a spot on screen. ---- */
+.top-stack, .bottom-stack {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  /* Leave room for the objective (top left) and ammo (top right) panels. */
+  width: min(560px, calc(100vw - 2 * (min(30vw, 340px) + 32px)));
+}
+/* Desktop: below the objective / ammo row. Touch: right at the top (those panels are hidden there). */
+.top-stack { top: max(70px, calc(env(safe-area-inset-top) + 62px)); }
+body.touch .hud .top-stack { top: max(14px, env(safe-area-inset-top)); }
+.bottom-stack {
+  bottom: max(6%, calc(env(safe-area-inset-bottom) + 24px));
+  width: min(820px, calc(100vw - 32px));
+  gap: 10px;
+}
+.top-stack > *, .bottom-stack > * { position: static; }
+
+.balance { width: 200px; height: 10px; background: rgba(0, 0, 0, 0.5); border-radius: 6px; display: none; position: relative !important; flex: none; }
 .balance.show { display: block; }
 .balance span { position: absolute; top: -4px; width: 6px; height: 18px; margin-left: -3px; left: 50%; background: var(--accent); border-radius: 3px; }
 
 .prompt {
-  position: absolute;
-  left: 50%;
-  bottom: 30%;
-  transform: translateX(-50%);
   padding: 8px 16px;
   border-radius: 999px;
   background: rgba(10, 14, 18, 0.7);
   border: 2px solid var(--accent);
   font-weight: 700;
-  opacity: 0;
-  transition: opacity 0.15s;
   white-space: nowrap;
+  display: none;
 }
-.prompt.show { opacity: 1; }
+.prompt.show { display: block; animation: pop-in 0.15s ease-out; }
 .prompt kbd { background: var(--accent); color: var(--accent-ink); border-radius: 6px; padding: 1px 7px; margin-right: 8px; font-family: inherit; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 .tutorial {
-  position: absolute;
-  left: 50%;
-  top: max(64px, calc(env(safe-area-inset-top) + 56px));
-  transform: translateX(-50%);
-  width: min(560px, calc(100vw - 32px));
-  padding: 12px 16px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 16px;
   background: rgba(10, 14, 18, 0.82);
   border: 1px solid rgba(233, 185, 73, 0.6);
   border-radius: var(--radius);
   text-align: center;
-  opacity: 0;
-  transition: opacity 0.3s;
+  display: none;
 }
-.tutorial.show { opacity: 1; }
+.tutorial.show { display: block; animation: pop-in 0.25s ease-out; }
 
-.toasts { position: absolute; left: max(16px, env(safe-area-inset-left)); bottom: 34%; display: flex; flex-direction: column; gap: 6px; max-width: 360px; }
-.toast { background: rgba(10, 14, 18, 0.8); border-left: 3px solid var(--accent); padding: 8px 12px; border-radius: 0 10px 10px 0; font-size: var(--fs-small); animation: toast 4s forwards; }
+.toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+.toast { background: rgba(10, 14, 18, 0.8); border-left: 3px solid var(--accent); padding: 8px 12px; border-radius: 0 10px 10px 0; font-size: var(--fs-small); animation: toast 4s forwards; max-width: 100%; }
 .toast strong { display: block; color: var(--accent); }
-@keyframes toast { 0% { opacity: 0; transform: translateX(-12px); } 8% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes toast { 0% { opacity: 0; transform: translateY(-8px); } 8% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
 
-.hint { position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: 46%; max-width: 300px; font-size: var(--fs-small); background: rgba(10, 14, 18, 0.8); padding: 8px 12px; border-radius: 10px; display: none; }
+.hint { max-width: 100%; font-size: var(--fs-small); background: rgba(10, 14, 18, 0.8); padding: 8px 12px; border-radius: 10px; display: none; }
 .hint.show { display: block; }
 
+/* Subtitles: at most two lines (long lines are split into several captions by the game). */
 .subtitles {
-  position: absolute;
-  left: 50%;
-  bottom: max(18%, calc(env(safe-area-inset-bottom) + 120px));
-  transform: translateX(-50%);
-  width: min(820px, calc(100vw - 32px));
+  max-width: 100%;
   text-align: center;
   --sub-bg: 0.6;
+  opacity: 0;
+  transition: opacity 0.25s;
 }
-.subtitles p { display: inline-block; margin: 0; padding: 6px 12px; border-radius: 8px; background: rgba(0, 0, 0, var(--sub-bg)); line-height: 1.35; }
+.subtitles.show { opacity: 1; }
+.subtitles p { display: inline-block; max-width: 34em; margin: 0; padding: 6px 12px; border-radius: 8px; background: rgba(0, 0, 0, var(--sub-bg)); line-height: 1.35; }
 .subtitles .speaker { font-weight: 800; margin-right: 6px; }
 .subtitles[data-size="small"] p { font-size: calc(15px * var(--text-scale)); }
 .subtitles[data-size="medium"] p { font-size: calc(19px * var(--text-scale)); }
 .subtitles[data-size="large"] p { font-size: calc(24px * var(--text-scale)); }
 .subtitles[data-size="xl"] p { font-size: calc(30px * var(--text-scale)); }
-.cinematic .subtitles { bottom: 13vh; }
-/* With touch buttons on screen, keep subtitles in the free half so buttons never cover them. */
-body.touch .hud:not(.cinematic) .subtitles { left: max(16px, env(safe-area-inset-left)); transform: none; width: 50vw; text-align: left; bottom: 24%; }
-body.touch.layout-oneHandedLeft .hud:not(.cinematic) .subtitles { left: auto; right: max(16px, env(safe-area-inset-right)); text-align: right; }
-/* The left side now holds the goal and gun cards, so tips go to the top centre. */
-body.touch .hud .tutorial,
-body.touch.layout-oneHandedLeft .hud .tutorial { width: min(420px, 38vw); left: 50%; right: auto; transform: translateX(-50%); top: max(20px, calc(env(safe-area-inset-top) + 12px)); text-align: center; }
+/* Shouts ("Grenade out!") get a small line of their own above the subtitles. */
+.bark { font-size: var(--fs-small); font-style: italic; padding: 3px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.5); opacity: 0; transition: opacity 0.2s; }
+.bark.show { opacity: 1; }
+.bark .speaker { font-weight: 800; font-style: normal; margin-right: 6px; }
+.cinematic .bottom-stack { bottom: calc(11vh + 12px); }
+
+/* Desktop: shown while the mouse is not captured, so players know one click turns on mouse look. */
+.click-to-look {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(10, 14, 18, 0.75);
+  border: 1px solid rgba(243, 236, 220, 0.3);
+  font-size: var(--fs-small);
+  display: none;
+}
+.click-to-look.show { display: block; animation: pop-in 0.3s ease-out; }
+
+/* Touch: the stacks sit in the free middle area, between the left cards and the right buttons. */
+body.touch .hud .top-stack { width: min(420px, 44vw); }
+body.touch .hud:not(.cinematic) .bottom-stack { left: 18vw; transform: none; width: 42vw; align-items: flex-start; bottom: max(22%, calc(env(safe-area-inset-bottom) + 16px)); }
+body.touch .hud:not(.cinematic) .subtitles { text-align: left; }
+body.touch.layout-oneHandedRight .hud:not(.cinematic) .bottom-stack { left: max(16px, env(safe-area-inset-left)); }
+body.touch.layout-oneHandedLeft .hud:not(.cinematic) .bottom-stack { left: auto; right: max(16px, env(safe-area-inset-right)); align-items: flex-end; }
+body.touch.layout-oneHandedLeft .hud:not(.cinematic) .subtitles { text-align: right; }
 /* On touch, the gun card and goal card (in the touch controls) replace the ammo and objective panels. */
 body.touch .hud .ammo, body.touch .hud .objective { display: none !important; }
-body.touch .prompt { left: 30%; }
-body.touch.layout-oneHandedLeft .prompt { left: 70%; }
+
+/* Reduce motion: no fades or pop-ins. */
+body.reduce-motion .hud * { animation: none !important; transition: none !important; }
 
 .skip-cutscene { position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); display: none; pointer-events: auto; min-height: 48px; }
 .cinematic .skip-cutscene { display: block; }
@@ -194,10 +230,6 @@ body.touch.layout-oneHandedLeft .prompt { left: 70%; }
 .fps.show { display: block; }
 
 .warning {
-  position: absolute;
-  left: 50%;
-  top: 34%;
-  transform: translateX(-50%) scale(0.9);
   padding: 10px 20px;
   border-radius: 12px;
   background: rgba(160, 20, 10, 0.85);
@@ -206,33 +238,25 @@ body.touch.layout-oneHandedLeft .prompt { left: 70%; }
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  white-space: nowrap;
-  opacity: 0;
-  transition: opacity 0.15s, transform 0.15s;
+  text-align: center;
+  display: none;
 }
-.warning.show { opacity: 1; transform: translateX(-50%) scale(1); }
+.warning.show { display: block; animation: pop-in 0.15s ease-out; }
 .bell-caption {
-  position: absolute;
-  left: 50%;
-  top: 22%;
-  transform: translateX(-50%);
   padding: 6px 16px;
   border-radius: 999px;
   background: rgba(10, 14, 18, 0.8);
   border: 2px solid var(--accent);
   color: var(--accent);
   font-weight: 700;
-  opacity: 0;
-  transition: opacity 0.2s;
+  display: none;
 }
-.bell-caption.show { opacity: 1; }
+.bell-caption.show { display: block; }
 .meter-bar {
-  position: absolute;
-  left: 50%;
-  top: max(64px, calc(env(safe-area-inset-top) + 56px));
-  width: min(260px, 50vw);
+  position: relative !important;
+  width: min(260px, 100%);
   height: 12px;
-  margin-left: calc(min(260px, 50vw) / -2);
+  margin-bottom: 18px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.55);
   display: none;

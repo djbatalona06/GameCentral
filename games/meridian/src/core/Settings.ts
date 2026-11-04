@@ -14,6 +14,8 @@ export type TouchPositions = Record<string, { x: number; y: number }>;
 export interface Settings {
   version: 4;
   firstRunDone: boolean;
+  /** Set once the player has opened Quick setup, which hides the "New here?" hint on the main menu. */
+  quickSetupSeen: boolean;
   gameplay: GameplayOptions;
   controls: {
     keys: Record<ButtonAction, string[]>;
@@ -70,6 +72,7 @@ export interface Settings {
 export const defaultSettings = (): Settings => ({
   version: 4,
   firstRunDone: false,
+  quickSetupSeen: false,
   gameplay: defaultGameplay(),
   controls: {
     keys: structuredClone(DEFAULT_KEYS),

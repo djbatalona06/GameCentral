@@ -49,6 +49,8 @@ import { type Pursuer, type VehicleState, newPursuer, newVehicle, pursuerBox, pu
 import { type SearchlightState, beamYaw, inBeam, newSearchlight, stepSearchlight } from "./ai/Searchlight";
 import { type Action, type ChapterDef, type Line, type CameraShot, type MusicMood, WORLD_ACTIONS } from "./story/types";
 import type { InteractDef, WeatherDef } from "./world/types";
+import { readingTime, splitCaption } from "./story/captions";
+import { CHATTER_IDLE_AFTER, Chatter, type ChatterKind } from "./story/chatter";
 
 // ------------------------------------------------------------------ public types
 
@@ -73,6 +75,10 @@ export interface GameplayOptions {
   fovScale: number;
   puzzleSkipAfter: number;
   invulnerable: boolean;
+  /** Keyboard and mouse: "shooter" turns the hero with the mouse (A/D sidestep); "adventure" faces where you walk. */
+  desktopStyle: "shooter" | "adventure";
+  /** Short unscripted lines from Ines and Bram while exploring. */
+  chatter: boolean;
 }
 
 export const defaultGameplay = (): GameplayOptions => ({
@@ -91,6 +97,8 @@ export const defaultGameplay = (): GameplayOptions => ({
   fovScale: 1,
   puzzleSkipAfter: 3,
   invulnerable: false,
+  desktopStyle: "shooter",
+  chatter: true,
 });
 
 export interface Snapshot {
@@ -140,7 +148,8 @@ export type SimEvent =
   | { type: "pickup"; label: string }
   | { type: "treasure"; id: string; name: string; description: string }
   | { type: "checkpoint"; id: string; label: string }
-  | { type: "dialogue"; line: Line }
+  /** One caption. `say` is the whole line to speak aloud (set on its first caption only). */
+  | { type: "dialogue"; line: Line; say: string | null }
   | { type: "objective"; text: string }
   | { type: "journal"; id: string }
   | { type: "tutorial"; text: string }
@@ -235,6 +244,12 @@ export class GameSim {
   private dialogueQueue: Line[] = [];
   private dialogueTimer = 0;
   private rand: () => number;
+  private chatterRand: () => number;
+  private chatter: Chatter;
+  /** Seconds since the player last moved or turned the camera (for idle chatter). */
+  private idleTime = 0;
+  private chatterTreasure = false;
+  private wasInCombat = false;
   private comboStep = 0;
   private comboTimer = 0;
   private meleeCooldown = 0;
@@ -263,6 +278,9 @@ export class GameSim {
     this.chapter = chapter;
     this.opts = opts;
     this.rand = rng(seed);
+    // Chatter has its own random stream, so it never changes how enemies or anything else behave.
+    this.chatterRand = rng(seed ^ 0x5eed);
+    this.chatter = new Chatter(chapter.id);
     this.world = new World(chapter.build());
     const d = this.world.data;
     this.movers = d.movers.map(newMover);
@@ -579,6 +597,7 @@ export class GameSim {
     }
 
     if (this.dead) return;
+    this.updateChatter(dt, input);
 
     const p = this.player;
     this.updateMovers(dt);
@@ -615,13 +634,14 @@ export class GameSim {
 
     if (riding) this.updateVehicle(dt, input);
     else {
-      p.update(dt, input, this.cam.yaw, this.world, this.aiming, { autoTraversal: this.opts.autoTraversal, holdToToggle: false });
+      p.update(dt, input, this.cam.yaw, this.world, this.aiming, { autoTraversal: this.opts.autoTraversal, holdToToggle: false, faceCamera: this.faceCamera(input) });
       this.applyWind(dt);
     }
     for (const ev of p.events) this.onPlayerEvent(ev);
     p.events.length = 0;
 
-    const travel = Math.hypot(p.vel.x, p.vel.z) > 0.5 ? yawOf(p.vel) : null;
+    // In shooter style the hero already follows the camera, so the camera never drifts on its own.
+    const travel = Math.hypot(p.vel.x, p.vel.z) > 0.5 && !(this.faceCamera(input) && !riding) ? yawOf(p.vel) : null;
     const w = this.activeWeapon();
     updateCamera(this.cam, this.cameraInput({ yaw: lookYaw, pitch: lookPitch }, travel, !!w && !!WEAPONS[w.id].scoped), this.world, dt);
 
@@ -664,6 +684,31 @@ export class GameSim {
     };
   }
 
+  /** Short unscripted lines while exploring, after finding treasure, or after a close fight. */
+  private updateChatter(dt: number, input: InputFrame): void {
+    const active = Math.hypot(input.move.x, input.move.y) > 0.1 || Math.abs(input.look.yaw) + Math.abs(input.look.pitch) > 1e-4;
+    this.idleTime = active ? 0 : this.idleTime + dt;
+    const combat = this.inCombat;
+    const closeCall = this.wasInCombat && !combat && this.health.hp / this.health.max < 0.35;
+    this.wasInCombat = combat;
+    const treasure = this.chatterTreasure;
+    this.chatterTreasure = false;
+    if (!this.opts.chatter || this.replaying || combat || this.riding) return;
+    // Never talk over the story.
+    if (this.currentLine || this.dialogueQueue.length) return;
+    const kind: ChatterKind | null = closeCall ? "closeCall" : treasure ? "treasure" : this.idleTime > CHATTER_IDLE_AFTER ? "idle" : null;
+    if (!kind) return;
+    const line = this.chatter.pick(kind, this.time, this.chatterRand);
+    if (!line) return;
+    if (kind === "idle") this.idleTime = 0;
+    this.emit({ type: "dialogue", line, say: line.text });
+  }
+
+  /** Shooter style: keyboard-and-mouse players turn the hero with the mouse. */
+  private faceCamera(input: InputFrame): boolean {
+    return input.device === "keyboard" && this.opts.desktopStyle === "shooter";
+  }
+
   private updateDialogue(dt: number): void {
     if (this.currentLine) {
       this.dialogueTimer -= dt;
@@ -671,9 +716,16 @@ export class GameSim {
     }
     if (!this.currentLine && this.dialogueQueue.length) {
       const line = this.dialogueQueue.shift()!;
-      this.currentLine = line;
-      this.dialogueTimer = line.duration ?? Math.max(2.2, line.text.split(" ").length * 0.32 + 0.8);
-      this.emit({ type: "dialogue", line });
+      // Long lines are shown as a few short captions, one after another.
+      const chunks = splitCaption(line.text);
+      const total = chunks.reduce((n, c) => n + c.length, 0) || 1;
+      const timeFor = (c: string) => (line.duration !== undefined ? (line.duration * c.length) / total : readingTime(c));
+      const first: Line = { ...line, text: chunks[0] ?? line.text, duration: timeFor(chunks[0] ?? line.text) };
+      const rest: Line[] = chunks.slice(1).map((c) => ({ ...line, text: c, duration: timeFor(c), continued: true }));
+      this.dialogueQueue.unshift(...rest);
+      this.currentLine = first;
+      this.dialogueTimer = first.duration!;
+      this.emit({ type: "dialogue", line: first, say: line.continued ? null : line.text.replace(/\s+/g, " ").trim() });
     }
   }
 
@@ -1172,6 +1224,7 @@ export class GameSim {
       if (this.treasures.has(t.id) || dist(t.pos, add(p.pos, { x: 0, y: 0.6, z: 0 })) > 1.6) continue;
       if (pressed || this.opts.autoPickup) {
         this.treasures.add(t.id);
+        this.chatterTreasure = true;
         this.emit({ type: "treasure", id: t.id, name: t.name, description: t.description });
         return;
       }
@@ -1384,7 +1437,7 @@ export class GameSim {
         const vel = { x: (aim.x - start.x) / t, y: (aim.y - start.y) / t + 0.5 * g * t, z: (aim.z - start.z) / t };
         this.projectiles.push({ id: ++this.projectileId, kind: "grenade", pos: start, vel, fuse: TUNING.grenade.fuse + 0.6, byPlayer: false, resting: false });
         this.emit({ type: "grenade", pos: start, byPlayer: false });
-        this.emit({ type: "dialogue", line: { speaker: "Mercenary", text: "Grenade out!", duration: 1.4 } });
+        this.emit({ type: "dialogue", line: { speaker: "Mercenary", text: "Grenade out!", duration: 1.4, bark: true }, say: "Grenade out!" });
       },
       melee: (e, damage) => this.hurtPlayer(damage, e.pos),
       alert: (e, at) => {

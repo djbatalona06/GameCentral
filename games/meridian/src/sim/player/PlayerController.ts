@@ -89,6 +89,11 @@ export interface CoverState {
 export interface PlayerAssists {
   autoTraversal: boolean;
   holdToToggle: boolean;
+  /**
+   * Shooter style (keyboard and mouse): on foot the hero always faces where the camera looks, so
+   * the mouse turns her and her gun, and A/D sidestep instead of turning.
+   */
+  faceCamera?: boolean;
 }
 
 export class PlayerController {
@@ -258,7 +263,9 @@ export class PlayerController {
     if (this.grounded) {
       if (b.crouch.pressed) this.tryCrouch(!this.crouched, world);
       const sprintHeld = b.sprint.held;
-      this.sprinting = sprintHeld && wish.mag > 0.5 && !aiming && !this.crouched && !this.inWater;
+      // In shooter style you sprint forwards (or diagonally forwards), never backwards or sideways.
+      const forwardEnough = !assists.faceCamera || input.move.y > 0.3;
+      this.sprinting = sprintHeld && wish.mag > 0.5 && forwardEnough && !aiming && !this.crouched && !this.inWater;
       if (this.sprinting && this.crouched) this.tryCrouch(false, world);
     } else {
       this.sprinting = false;
@@ -271,14 +278,16 @@ export class PlayerController {
     if (this.beam) speed = Math.min(speed, P.walkSpeed);
     if (this.inWater) speed *= 0.6;
     if (this.landRecover > 0) speed *= 0.3;
+    // Walking backwards while facing the camera is a little slower than walking forwards.
+    if (assists.faceCamera && input.move.y < -0.3) speed *= P.backpedalScale;
 
     const target = scale(wish.dir, speed);
     const accel = this.grounded ? P.groundAccel : P.airAccel;
     this.vel.x = approach(this.vel.x, target.x, accel * dt);
     this.vel.z = approach(this.vel.z, target.z, accel * dt);
 
-    // Face movement direction, or the camera when aiming.
-    const faceYaw = aiming ? camYaw : wish.mag > 0 ? yawOf(wish.dir) : this.yaw;
+    // Face movement direction, or the camera when aiming (and always, in shooter style).
+    const faceYaw = aiming || (assists.faceCamera && !this.inWater) ? camYaw : wish.mag > 0 ? yawOf(wish.dir) : this.yaw;
     this.yaw += angleDiff(this.yaw, faceYaw) * Math.min(1, P.turnRate * dt);
 
     // Jumping, with coyote time and input buffering.
