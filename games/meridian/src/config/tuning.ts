@@ -18,6 +18,8 @@ export const TUNING = {
     sprintSpeed: 7.6,
     crouchSpeed: 2.0,
     aimMoveSpeed: 2.6,
+    /** Speed multiplier for walking backwards in shooter style (keyboard and mouse). */
+    backpedalScale: 0.75,
     swimSpeed: 2.6,
     walkThreshold: 0.55, // stick magnitude below this = walk
     groundAccel: 40,

@@ -64,6 +64,7 @@ export const OPTIONS: Option[] = [
   { tab: "controls", section: "Camera", label: "Look sensitivity", type: "slider", min: 0.3, max: 2.5, step: 0.05, format: x, get: (s) => s.controls.lookSensitivity, set: (s, v) => (s.controls.lookSensitivity = v as number) },
   { tab: "controls", label: "Aim sensitivity", type: "slider", min: 0.2, max: 1.5, step: 0.05, format: x, get: (s) => s.controls.aimSensitivity, set: (s, v) => (s.controls.aimSensitivity = v as number) },
   { tab: "controls", label: "Invert vertical look", type: "toggle", get: (s) => s.gameplay.invertY, set: (s, v) => (s.gameplay.invertY = v as boolean) },
+  { tab: "controls", label: "Mouse turns the hero (shooter style)", desc: "Keyboard and mouse: you always face where the mouse points and A/D sidestep. Off: you face the way you walk.", type: "toggle", get: (s) => s.gameplay.desktopStyle === "shooter", set: (s, v) => (s.gameplay.desktopStyle = v ? "shooter" : "adventure") },
   { tab: "controls", label: "Gyro aiming", desc: "Tilt your phone to fine-tune aim while aiming.", type: "toggle", get: (s) => s.controls.gyroAim, set: (s, v) => (s.controls.gyroAim = v as boolean) },
   { tab: "controls", section: "Hold or toggle", label: "Toggle aim", type: "toggle", get: (s) => s.controls.toggleAim, set: (s, v) => (s.controls.toggleAim = v as boolean) },
   { tab: "controls", label: "Toggle sprint", type: "toggle", get: (s) => s.controls.toggleSprint, set: (s, v) => (s.controls.toggleSprint = v as boolean) },

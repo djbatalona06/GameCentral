@@ -12,6 +12,10 @@ export interface Line {
   text: string;
   /** Seconds on screen; defaults to a reading-speed estimate. */
   duration?: number;
+  /** A short shout or aside ("Grenade out!"). Shown in its own small caption, never replacing story lines. */
+  bark?: boolean;
+  /** Set on the second and later captions of a long line that was split up (internal). */
+  continued?: boolean;
 }
 
 export interface CameraShot {
