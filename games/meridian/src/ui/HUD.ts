@@ -7,6 +7,8 @@ import { WEAPONS, currentSpread } from "../sim/combat/weapons";
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, yawOf, sub } from "../sim/math";
 import type { Speaker } from "../sim/story/types";
+import { readingTime } from "../sim/story/captions";
+import { adaptTip, keyLabel } from "./controlText";
 import type { InputFrame } from "../input/actions";
 
 const SPEAKER_COLORS: Record<Speaker, string> = {
@@ -39,7 +41,11 @@ export class HUD {
   private damageEls: Array<{ el: HTMLElement; t: number; yaw: number }> = [];
   private soundEls: Array<{ el: HTMLElement; t: number; yaw: number }> = [];
   onSkip: (() => void) | null = null;
+  /** Reads a line aloud (the whole line once, even when it is shown as several captions). */
   speak: ((text: string, speaker: Speaker) => void) | null = null;
+  private barkTimer = 0;
+  private tutorialRaw = "";
+  private tutorialDevice: InputFrame["device"] | null = null;
 
   constructor(parent: HTMLElement, private settings: () => Settings) {
     const wrap = document.createElement("div");
@@ -70,10 +76,12 @@ export class HUD {
     switch (ev.type) {
       case "dialogue": {
         if (!a.subtitles && !a.voiceLines) break;
-        const box = this.q("subtitles");
+        // Shouts go in their own small line, so they never wipe a story subtitle.
+        const bark = !!ev.line.bark;
+        const box = this.q(bark ? "bark" : "subtitles");
         box.innerHTML = "";
         if (a.subtitles) {
-          const p = document.createElement("p");
+          const p = document.createElement(bark ? "span" : "p");
           if (a.speakerNames) {
             const sp = document.createElement("span");
             sp.className = "speaker";
@@ -83,9 +91,12 @@ export class HUD {
           }
           p.appendChild(document.createTextNode(ev.line.text));
           box.appendChild(p);
+          box.classList.add("show");
         }
-        this.subtitleTimer = ev.line.duration ?? Math.max(2.2, ev.line.text.split(" ").length * 0.32 + 0.8);
-        if (a.voiceLines) this.speak?.(ev.line.text, ev.line.speaker);
+        const time = ev.line.duration ?? readingTime(ev.line.text);
+        if (bark) this.barkTimer = time;
+        else this.subtitleTimer = time;
+        if (a.voiceLines && ev.say) this.speak?.(ev.say, ev.line.speaker);
         break;
       }
       case "objective":
@@ -93,7 +104,8 @@ export class HUD {
         break;
       case "tutorial":
         if (!a.tutorialHints) break;
-        this.q("tutorial").textContent = ev.text;
+        this.tutorialRaw = ev.text;
+        this.tutorialDevice = null; // worded for the current device on the next update
         this.q("tutorial").classList.add("show");
         this.tutorialTimer = Math.max(5, ev.text.split(" ").length * 0.35);
         break;
@@ -206,10 +218,18 @@ export class HUD {
       [(this.warningTimer -= dt), "warning"],
       [(this.bellTimer -= dt), "bell"],
     ];
-    for (const [t, role] of timers) {
+    this.barkTimer -= dt;
+    for (const [t, role] of [...timers, [this.barkTimer, "bark"] as [number, string]]) {
       if (t > 0) continue;
-      if (role === "subtitles") this.q(role).innerHTML = "";
-      else this.q(role).classList.remove("show");
+      const el = this.q(role);
+      el.classList.remove("show");
+      // Captions fade out first, then free their space in the stack.
+      if ((role === "subtitles" || role === "bark") && t < -0.3 && el.firstChild) el.innerHTML = "";
+    }
+    // Tips use the right words for the device ("press Space" on a keyboard, "press A" on a pad).
+    if (this.tutorialRaw && this.tutorialDevice !== device) {
+      this.tutorialDevice = device;
+      this.q("tutorial").textContent = adaptTip(this.tutorialRaw, device, s.controls);
     }
     const subs = this.q("subtitles");
     subs.dataset.size = s.a11y.subtitleSize;
@@ -260,7 +280,10 @@ export class HUD {
     // Context prompt with the right button name for the current device.
     const pr = this.q("prompt");
     if (sim.prompt && !sim.cutscene) {
-      const key = PROMPT_KEYS[device][sim.prompt.action];
+      const action = sim.prompt.action;
+      // Keyboard players see the key they actually bound (remapping included).
+      const bound = device === "keyboard" ? s.controls.keys[action]?.[0] : undefined;
+      const key = bound ? keyLabel(bound) : PROMPT_KEYS[device][action];
       pr.innerHTML = "";
       if (device !== "touch") {
         const k = document.createElement("kbd");
@@ -321,8 +344,20 @@ export class HUD {
     if (s.video.showFps) f.textContent = `${fps.toFixed(0)} fps`;
   }
 
+  /** Desktop only: "Click to look around" while the mouse is not captured. */
+  setClickToLook(on: boolean): void {
+    this.q("click-to-look").classList.toggle("show", on);
+  }
+
   reset(): void {
     this.q("subtitles").innerHTML = "";
+    this.q("bark").innerHTML = "";
+    this.q("subtitles").classList.remove("show");
+    this.q("bark").classList.remove("show");
+    this.subtitleTimer = 0;
+    this.barkTimer = 0;
+    this.tutorialRaw = "";
+    this.tutorialDevice = null;
     this.q("toasts").innerHTML = "";
     this.q("damage").innerHTML = "";
     this.q("sounds").innerHTML = "";

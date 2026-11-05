@@ -35,8 +35,9 @@ page.on("console", (m) => {
 
 const shot = (name) => page.screenshot({ path: `${OUT}${name}.png` });
 const game = (fn, arg) => page.evaluate(fn, arg);
+// A phone taps (touch events). A mouse click here would rightly switch the game to desktop mode.
 const click = async (sel) => {
-  await page.locator(sel).first().click();
+  await page.locator(sel).first().tap();
   await page.waitForTimeout(250);
 };
 
@@ -56,22 +57,28 @@ async function holdStick(dx, dy, ms) {
 }
 
 try {
-  // 1. First run accessibility setup.
+  // 1. The very first launch opens on the title (home) screen, not a settings page.
   await page.goto(`${BASE}?debug=1`);
-  await page.waitForSelector('[data-screen="firstrun"]', { timeout: 30000 });
-  await shot("01-first-run");
-  check("first-run accessibility screen shows", true);
-  await click('[data-preset="hearing"]');
-  check("hearing preset applied", await game(() => window.__meridian.settings.a11y.soundIndicators === true));
-  await click('[data-action="continue"]');
-
-  // 2. Title and main menu.
-  await page.waitForSelector('[data-screen="title"]');
-  await page.waitForTimeout(800);
+  await page.waitForSelector('[data-screen="title"]', { timeout: 30000 });
+  check("first launch opens on the title screen", (await page.locator('[data-screen="firstrun"]').count()) === 0);
+  check("phone title says Tap to start", (await page.locator('[data-action="start"]').textContent()) === "Tap to start");
+  await page.waitForTimeout(1200);
   await shot("02-title");
   await click('[data-action="start"]');
   await page.waitForSelector('[data-screen="main-menu"]');
+  await page.waitForTimeout(500);
+  check("main menu suggests Quick setup to new players", await page.locator('[data-role="setup-hint"]').isVisible());
   await shot("03-main-menu");
+
+  // 2. Quick setup (the old first-run page) from the main menu.
+  await click('[data-action="quick-setup"]');
+  await page.waitForSelector('[data-screen="firstrun"]');
+  await shot("01-quick-setup");
+  await click('[data-preset="hearing"]');
+  check("hearing preset applied", await game(() => window.__meridian.settings.a11y.soundIndicators === true));
+  await click('[data-screen="firstrun"] [data-action="continue"]');
+  await page.waitForSelector('[data-screen="main-menu"]');
+  check("Quick setup hint goes away once seen", !(await page.locator('[data-role="setup-hint"]').isVisible()));
 
   // 3. New game -> slot 1 -> Explorer.
   await click('[data-action="new-game"]');
@@ -94,10 +101,12 @@ try {
 
   // 5. Tap Jump.
   await page.locator(".tc-jump").dispatchEvent("pointerdown", { pointerId: 9, pointerType: "touch", bubbles: true });
-  await page.waitForTimeout(120);
+  // Wait for the game to actually take a step (the software renderer can be slow), then look for the jump.
+  let jumped = true;
+  await page.waitForFunction(() => window.__meridian.sim.player.vel.y > 1 || window.__meridian.sim.player.mode === "air", null, { timeout: 5000 }).catch(() => (jumped = false));
   const vy = await game(() => window.__meridian.sim.player.vel.y);
   await page.locator(".tc-jump").dispatchEvent("pointerup", { pointerId: 9, pointerType: "touch", bubbles: true });
-  check("jump button jumps", vy > 1 || (await game(() => window.__meridian.sim.player.mode)) === "air", `vy=${vy.toFixed(2)}`);
+  check("jump button jumps", jumped, `vy=${vy.toFixed(2)}`);
 
   // 6. Checkpoint autosave and Continue after reload.
   await game(() => {
@@ -177,8 +186,15 @@ try {
   const cdp = await context.newCDPSession(page);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   await page.waitForTimeout(4000);
-  const fps = await game(() => window.__meridian.renderer?.engine?.getFps?.() ?? 0);
-  console.log(`INFO  fps under 4x CPU throttle with software WebGL: ${fps.toFixed(1)}`);
+  const perf = await game(() => {
+    const r = window.__meridian.renderer;
+    return { ...r.stats(), engineFps: r.engine.getFps(), deltaMs: r.engine.getDeltaTime() };
+  });
+  console.log(`INFO  fps under 4x CPU throttle with software WebGL: ${perf.fps.toFixed(1)} (p95 frame ${perf.p95FrameMs.toFixed(0)} ms, render scale ${perf.scaling.toFixed(2)})`);
+  // Regression test: the game drives its own frame loop, so Babylon's clock only runs if beginFrame is called.
+  // When it stopped, the fps readout was 0, the water froze and dynamic resolution collapsed.
+  check("frame clock is running", perf.fps > 0 && perf.engineFps > 0 && perf.deltaMs > 0, `fps ${perf.fps.toFixed(1)}, engine fps ${perf.engineFps.toFixed(1)}, delta ${perf.deltaMs.toFixed(1)} ms`);
+  check("render scale stays above the sharpness floor", perf.scaling <= 1 / 0.6 + 1e-6, `scale ${perf.scaling.toFixed(2)}`);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
 
   // 11. Act I chapters 4-7 load, stay inside the phone draw-call budget, and show their set pieces.
@@ -198,8 +214,7 @@ try {
     check(`chapter ${ch} renders within the phone budget`, st.drawCalls > 0 && st.drawCalls <= 150 && st.triangles <= 300000, `${st.drawCalls} draw calls, ${st.triangles} triangles`);
   }
 
-  // 12. Portrait: the same phone held upright, then rotated mid-game.
-  await page.setViewportSize({ width: 390, height: 844 });
+  // 12. Landscape only: held upright, a touch phone shows a "turn your phone" prompt and the game pauses behind it.
   await page.goto(`${BASE}?debug=1&chapter=2`);
   await page.waitForFunction(() => window.__meridian?.sim, null, { timeout: 30000 });
   await game(() => {
@@ -208,30 +223,120 @@ try {
     g.settings.controls.touchLayout = "standard"; // step 7 switched to one-handed
     g.touch.applyLayout();
   });
-  await page.waitForTimeout(1500);
-  await shot("portrait-ch02");
+  await page.waitForTimeout(1200);
+  const rotateShown = () => page.evaluate(() => getComputedStyle(document.getElementById("rotate")).display !== "none");
+  const gameState = () => game(() => window.__meridian.state);
+  check("landscape: no rotate prompt, game playing", !(await rotateShown()) && (await gameState()) === "playing");
   const inside = async () =>
-    page.evaluate(() => [...document.querySelectorAll(".tc-btn")].every((b) => {
+    page.evaluate(() => [...document.querySelectorAll(".tc-btn:not(.tc-hidden)")].every((b) => {
       const r = b.getBoundingClientRect();
       return r.left >= -2 && r.top >= -2 && r.right <= innerWidth + 2 && r.bottom <= innerHeight + 2;
     }));
-  check("portrait: every touch button is on screen", await inside());
-  const pz0 = await game(() => window.__meridian.sim.player.pos.z);
-  await page.evaluate(() => {
-    const root = document.querySelector(".touch-controls");
-    const o = (x, y) => ({ pointerId: 21, pointerType: "touch", clientX: x, clientY: y, bubbles: true, isPrimary: true });
-    root.dispatchEvent(new PointerEvent("pointerdown", o(80, 700)));
-    root.dispatchEvent(new PointerEvent("pointermove", o(80, 640)));
-  });
-  await page.waitForTimeout(1200);
-  await page.evaluate(() => document.querySelector(".touch-controls").dispatchEvent(new PointerEvent("pointerup", { pointerId: 21, pointerType: "touch", clientX: 80, clientY: 640, bubbles: true })));
-  const pz1 = await game(() => window.__meridian.sim.player.pos.z);
-  check("portrait: the stick moves Ines", Math.abs(pz1 - pz0) > 1.5, `z ${pz0.toFixed(2)} -> ${pz1.toFixed(2)}`);
+  check("landscape: every touch button is on screen", await inside());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(800);
+  await shot("rotate-prompt");
+  check("upright phone: the rotate prompt covers the game", await rotateShown());
+  check("upright phone: the game is paused", (await gameState()) === "paused");
+  check("upright phone: no touch controls are shown", (await page.locator(".touch-controls:not(.hidden)").count()) === 0);
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(800);
-  await shot("rotated-to-landscape");
-  check("rotation: touch buttons re-lay out on screen", await inside());
-  check("rotation: no input stuck after rotating", await game(() => window.__meridian.input.touch.held.size === 0));
+  check("turning back to landscape hides the prompt", !(await rotateShown()));
+  check("turning back to landscape resumes the game by itself", (await gameState()) === "playing");
+  check("landscape again: touch controls are back and nothing is stuck", (await page.locator(".touch-controls:not(.hidden)").count()) === 1 && (await game(() => window.__meridian.input.touch.held.size === 0)));
+  // A paused game that the player paused themselves must stay paused after turning the phone.
+  await page.locator(".tc-pause").dispatchEvent("pointerdown", { pointerId: 12, pointerType: "touch", bubbles: true });
+  await page.locator(".tc-pause").dispatchEvent("pointerup", { pointerId: 12, pointerType: "touch", bubbles: true });
+  await page.waitForFunction(() => window.__meridian.state === "paused", null, { timeout: 10000 });
+  const beforeTurn = await gameState();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(500);
+  const upright = await gameState();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(600);
+  const afterTurn = await gameState();
+  check("a game the player paused stays paused after turning the phone", beforeTurn === "paused" && afterTurn === "paused", `${beforeTurn} -> ${upright} -> ${afterTurn}`);
+  await game(() => window.__meridian.resume());
+  await page.waitForTimeout(300);
+
+  // 12b. Left-side widgets: gun card (tap = swap), goal card (tap = point at the goal) and the Walk/Run switch.
+  await page.goto(`${BASE}?debug=1&chapter=3&quality=low`);
+  await page.waitForFunction(() => window.__meridian?.sim, null, { timeout: 30000 });
+  await game(() => {
+    const g = window.__meridian;
+    g.sim.skipCutscene();
+    g.sim.opts.invulnerable = true;
+    g.settings.controls.touchLayout = "standard";
+    g.touch.applyLayout();
+    if (!g.sim.weapons.sidearm) g.sim.giveWeapon("pistol", 60);
+    if (!g.sim.weapons.long) g.sim.giveWeapon("rifle", 90);
+  });
+  await page.waitForTimeout(1500);
+  const cards = await game(() => {
+    const g = window.__meridian;
+    const q = (sel) => document.querySelector(sel);
+    const rect = (sel) => q(sel).getBoundingClientRect().toJSON();
+    const w = g.sim.activeWeapon();
+    return {
+      gunName: q(".tc-gun [data-role=gun-name]").textContent,
+      gunAmmo: q(".tc-gun [data-role=gun-ammo]").textContent,
+      expectAmmo: `${w.mag} / ${w.reserve}`,
+      goalText: q(".tc-goal [data-role=goal-text]").textContent,
+      objective: g.sim.objective?.text ?? "",
+      gun: rect(".tc-gun"), goal: rect(".tc-goal"), walk: rect(".tc-walk"), jump: rect(".tc-jump"), fire: rect(".tc-fire"),
+      width: innerWidth,
+      ammoShown: getComputedStyle(q(".hud .ammo")).display !== "none",
+      objectiveShown: getComputedStyle(q(".hud .objective")).display !== "none",
+    };
+  });
+  await shot("touch-layout-landscape-low");
+  check("gun card shows the weapon name", cards.gunName.length > 2, cards.gunName);
+  check("gun card shows magazine / reserve ammo", cards.gunAmmo === cards.expectAmmo, `${cards.gunAmmo} vs ${cards.expectAmmo}`);
+  check("goal card shows the current objective", cards.objective.length > 0 && cards.goalText === cards.objective, cards.goalText);
+  check("status widgets sit on the left", cards.gun.right < cards.width * 0.4 && cards.goal.right < cards.width * 0.4 && cards.walk.right < cards.width * 0.4);
+  check("action buttons sit on the right", cards.jump.left > cards.width * 0.5 && cards.fire.left > cards.width * 0.5);
+  check("old ammo and objective panels are hidden on touch", !cards.ammoShown && !cards.objectiveShown);
+
+  const tap = (sel, id) =>
+    page.evaluate(([sel, id]) => {
+      const el = document.querySelector(sel);
+      const t = window.__meridian.input.touch;
+      el.dispatchEvent(new PointerEvent("pointerdown", { pointerId: id, pointerType: "touch", bubbles: true }));
+      const tapped = [...t.tapped];
+      el.dispatchEvent(new PointerEvent("pointerup", { pointerId: id, pointerType: "touch", bubbles: true }));
+      return tapped;
+    }, [sel, id]);
+  check("tapping the goal card presses Goal", (await tap(".tc-goal", 41)).includes("navAssist"));
+  const before = await game(() => window.__meridian.sim.weapons.active);
+  check("tapping the gun card presses Swap", (await tap(".tc-gun", 42)).includes("swapWeapon"));
+  await page.waitForTimeout(500);
+  const after = await game(() => window.__meridian.sim.weapons.active);
+  check("tapping the gun card swaps the weapon", before !== after, `${before} -> ${after}`);
+  await page.waitForTimeout(300);
+  const nameAfter = await game(() => document.querySelector(".tc-gun [data-role=gun-name]").textContent);
+  check("gun card updates after a swap", nameAfter !== cards.gunName, `${cards.gunName} -> ${nameAfter}`);
+
+  // Walk/Run: the same stick push covers much less ground in Walk mode.
+  const spot = await game(() => {
+    const p = window.__meridian.sim.player;
+    return { pos: { ...p.pos }, yaw: p.yaw };
+  });
+  const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+  const reset = () => game((s) => window.__meridian.sim.player.teleport(s.pos, s.yaw), spot);
+  await reset();
+  await page.waitForTimeout(300);
+  await holdStick(0, -60, 1000);
+  const run = flat(spot.pos, await game(() => ({ ...window.__meridian.sim.player.pos })));
+  await reset();
+  await tap(".tc-walk", 43);
+  check("Walk switch turns on", (await game(() => window.__meridian.touch.walk)) === true && (await page.locator(".tc-walk").textContent()) === "Walk");
+  await page.waitForTimeout(300);
+  await holdStick(0, -60, 1000);
+  const walk = flat(spot.pos, await game(() => ({ ...window.__meridian.sim.player.pos })));
+  await shot("touch-layout-walk-on");
+  check("Walk mode moves slower than Run", run > 1 && walk > 0.2 && walk < run * 0.7, `run ${run.toFixed(2)} m, walk ${walk.toFixed(2)} m`);
+  await tap(".tc-walk", 44);
+  check("Walk switch turns off again", (await game(() => window.__meridian.touch.walk)) === false && (await page.locator(".tc-walk").textContent()) === "Run");
 
   // 12b. Story choices: ask Varek's question, tap an answer, finish the chapter, see the recap and a quiet talk.
   await page.setViewportSize({ width: 844, height: 390 });
@@ -300,6 +405,64 @@ try {
   const dz1 = await dp.evaluate(() => window.__meridian.sim.player.pos.z);
   check("keyboard W moves Ines on desktop", dz1 > dz0 + 2, `z ${dz0.toFixed(2)} -> ${dz1.toFixed(2)}`);
   check("no touch controls on desktop", (await dp.locator(".touch-controls.hidden").count()) === 1);
+  check("desktop shows Click to look around", await dp.locator('[data-role="click-to-look"]').isVisible());
+
+  // Shooter style: A sidesteps (the hero keeps facing the camera) and the first click only captures the mouse.
+  const sideBefore = await dp.evaluate(() => ({ yaw: window.__meridian.sim.player.yaw, cam: window.__meridian.sim.cam.yaw, x: window.__meridian.sim.player.pos.x, shots: window.__meridian.sim.stats.shots }));
+  await dp.keyboard.down("KeyA");
+  await dp.waitForFunction((x) => Math.abs(window.__meridian.sim.player.pos.x - x) > 1.5, sideBefore.x, { timeout: 10000 }).catch(() => undefined);
+  await dp.keyboard.up("KeyA");
+  const sideAfter = await dp.evaluate(() => ({ yaw: window.__meridian.sim.player.yaw, cam: window.__meridian.sim.cam.yaw, x: window.__meridian.sim.player.pos.x }));
+  const facingDiff = Math.abs(Math.atan2(Math.sin(sideAfter.yaw - sideAfter.cam), Math.cos(sideAfter.yaw - sideAfter.cam)));
+  check("A sidesteps while facing the camera", Math.abs(sideAfter.x - sideBefore.x) > 1.5 && facingDiff < 0.15, `dx ${(sideAfter.x - sideBefore.x).toFixed(2)}, facing off by ${facingDiff.toFixed(2)} rad`);
+  await dp.mouse.click(640, 360);
+  await dp.waitForTimeout(500);
+  const locked = await dp.evaluate(() => document.pointerLockElement?.id === "game");
+  check("first click does not fire", (await dp.evaluate(() => window.__meridian.sim.stats.shots)) === sideBefore.shots);
+  if (locked) {
+    const cam0 = await dp.evaluate(() => window.__meridian.sim.cam.yaw);
+    for (let i = 0; i < 10; i++) await dp.mouse.move(640 + (i + 1) * 30, 360);
+    await dp.waitForTimeout(400);
+    const cam1 = await dp.evaluate(() => ({ cam: window.__meridian.sim.cam.yaw, hero: window.__meridian.sim.player.yaw }));
+    check("moving the mouse right turns the camera and the hero right", cam1.cam > cam0 + 0.1 && Math.abs(cam1.hero - cam1.cam) < 0.3, `cam ${cam0.toFixed(2)} -> ${cam1.cam.toFixed(2)}, hero ${cam1.hero.toFixed(2)}`);
+  } else {
+    // Headless browsers can't capture the mouse, so pretend it is captured and send real mouse moves.
+    const cam0 = await dp.evaluate(() => {
+      Object.defineProperty(document, "pointerLockElement", { configurable: true, get: () => document.getElementById("game") });
+      return window.__meridian.sim.cam.yaw;
+    });
+    for (let i = 0; i < 12; i++) {
+      await dp.evaluate(() => window.dispatchEvent(new MouseEvent("mousemove", { movementX: 40, movementY: 0 })));
+      await dp.waitForTimeout(30);
+    }
+    await dp.waitForFunction((c) => window.__meridian.sim.cam.yaw > c + 0.3, cam0, { timeout: 5000 }).catch(() => undefined);
+    await dp.waitForTimeout(400);
+    const cam1 = await dp.evaluate(() => ({ cam: window.__meridian.sim.cam.yaw, hero: window.__meridian.sim.player.yaw }));
+    check("moving the mouse right turns the camera and the hero right", cam1.cam > cam0 + 0.3 && Math.abs(cam1.hero - cam1.cam) < 0.3, `cam ${cam0.toFixed(2)} -> ${cam1.cam.toFixed(2)}, hero ${cam1.hero.toFixed(2)} (simulated mouse capture)`);
+    await dp.evaluate(() => delete document.pointerLockElement);
+  }
+
+  // Captions and the button prompt never overlap.
+  await dp.evaluate(() => {
+    const s = window.__meridian.sim;
+    s.events.push({ type: "dialogue", line: { speaker: "Bram", text: "Catalina's ship has been lost for four hundred years. Try not to join her, and mind the rocks." }, say: null });
+    s.events.push({ type: "dialogue", line: { speaker: "Mercenary", text: "Grenade out!", bark: true, duration: 3 }, say: null });
+  });
+  await dp.waitForTimeout(400);
+  // The HUD redraws the prompt every frame, so show one and measure in the same step.
+  const boxes = await dp.evaluate(() => {
+    const pr = document.querySelector('[data-role="prompt"]');
+    pr.innerHTML = "<kbd>E</kbd>Climb";
+    pr.classList.add("show");
+    return ["subtitles", "bark", "prompt"].map((r) => document.querySelector(`[data-role="${r}"]`).getBoundingClientRect().toJSON());
+  });
+  const overlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  check("subtitle, shout and prompt don't overlap", boxes[0].height > 0 && boxes[1].height > 0 && !overlap(boxes[0], boxes[1]) && !overlap(boxes[0], boxes[2]) && !overlap(boxes[1], boxes[2]), JSON.stringify(boxes.map((b) => [Math.round(b.top), Math.round(b.bottom)])));
+  await dp.screenshot({ path: `${OUT}desktop-captions.png` });
+  // Computers can be any shape: a tall window shows no rotate prompt and the game keeps playing.
+  await dp.setViewportSize({ width: 600, height: 900 });
+  await dp.waitForTimeout(600);
+  check("desktop: a tall window shows no rotate prompt", (await dp.evaluate(() => getComputedStyle(document.getElementById("rotate")).display)) === "none" && (await dp.evaluate(() => window.__meridian.state)) === "playing");
   await dp.screenshot({ path: `${OUT}desktop.png` });
   await desk.close();
 } catch (err) {

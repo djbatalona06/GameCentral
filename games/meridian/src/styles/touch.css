@@ -10,9 +10,9 @@
   border: 2px solid rgba(255, 255, 255, 0.55);
   background: rgba(20, 26, 32, 0.55);
   opacity: var(--tc-opacity);
-  font-size: calc(12px * var(--text-scale));
+  font-size: calc(11px * var(--text-scale));
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   color: #fff;
   touch-action: none;
@@ -45,3 +45,46 @@
   transform: translate(-50%, -50%);
 }
 .editing .tc-btn { opacity: 1; border-style: dashed; border-color: var(--focus); }
+
+/* Left side: the Walk/Run switch and two cards. The gun card swaps weapons; the goal card points at the goal. */
+.tc-walk.tc-on { border-color: var(--accent); background: rgba(233, 185, 73, 0.35); opacity: 1; }
+.tc-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 12px;
+  overflow: hidden;
+  border-radius: 14px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  line-height: 1.2;
+  background: rgba(20, 26, 32, 0.22);
+  border-color: rgba(255, 255, 255, 0.4);
+  opacity: max(var(--tc-opacity), 0.75);
+}
+.tc-card.tc-hidden { display: none; }
+.tc-card span, .tc-card strong { pointer-events: none; }
+.tc-card.tc-pulse { animation: tc-pulse 0.9s ease-out 2; }
+@keyframes tc-pulse {
+  from { box-shadow: 0 0 0 0 rgba(233, 185, 73, 0.9); }
+  to { box-shadow: 0 0 0 14px rgba(233, 185, 73, 0); }
+}
+.tc-goal strong { color: var(--accent); font-size: calc(10px * var(--text-scale)); letter-spacing: 0.15em; text-transform: uppercase; }
+.tc-goal [data-role="goal-text"] {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: calc(11px * var(--text-scale));
+}
+/* See-through gun picture behind the name and ammo. */
+.tc-gun svg { position: absolute; right: 6px; top: 50%; width: 64px; height: 32px; margin-top: -16px; fill: #fff; opacity: 0.3; pointer-events: none; }
+.tc-gun .gun-long, .tc-gun[data-slot="long"] .gun-short { display: none; }
+.tc-gun[data-slot="long"] .gun-long { display: block; }
+.tc-gun-name { font-size: calc(10px * var(--text-scale)); color: var(--ink-dim); }
+.tc-gun-ammo { font-size: calc(17px * var(--text-scale)); font-weight: 800; }
+.tc-gun.tc-low .tc-gun-ammo { color: var(--danger); }
+.tc-gun-extra { font-size: calc(9px * var(--text-scale)); color: var(--ink-dim); white-space: nowrap; }

@@ -54,12 +54,12 @@ export interface CameraInput {
 
 /** The aspect ratio the field-of-view numbers in tuning.ts were chosen for (a landscape phone). */
 export const REFERENCE_ASPECT = 16 / 9;
-/** Widest vertical view allowed in portrait, so tall screens don't turn into a fish-eye lens. */
+/** Widest vertical view allowed on narrow screens, so tall windows don't turn into a fish-eye lens. */
 export const MAX_VERTICAL_FOV = 1.25;
 
 /**
  * Vertical field of view for the current screen shape. Wide screens keep the tuned vertical view.
- * Narrow (portrait) screens keep the tuned *horizontal* view instead, so you can still see the
+ * Narrow screens (a tall desktop window; phones are landscape-only) keep the tuned *horizontal* view instead, so you can still see the
  * sides of the level, up to MAX_VERTICAL_FOV.
  */
 export function fovForAspect(vfov: number, aspect: number, refAspect = REFERENCE_ASPECT): number {

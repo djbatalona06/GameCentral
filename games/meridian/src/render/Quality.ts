@@ -10,6 +10,8 @@ export interface TierSpec {
   textureSize: number;
   /** "blob" = a soft dark disc under characters only (no shadow map). */
   shadows: "blob" | "pcf1024" | "pcf2048" | "cascaded";
+  /** Anisotropic filtering level for surface textures (1 = off). */
+  anisotropy: number;
   fxaa: boolean;
   bloom: boolean;
   ssao: boolean;
@@ -22,14 +24,32 @@ export interface TierSpec {
 }
 
 export const TIERS: Record<Tier, TierSpec> = {
-  low: { maxDpr: 1, textureSize: 256, shadows: "blob", fxaa: false, bloom: false, ssao: false, particles: 200, grassDensity: 3.5, animDistance: 35 },
-  medium: { maxDpr: 1.5, textureSize: 256, shadows: "pcf1024", fxaa: true, bloom: false, ssao: false, particles: 400, grassDensity: 6, animDistance: 50 },
-  high: { maxDpr: 2, textureSize: 512, shadows: "pcf2048", fxaa: true, bloom: true, ssao: false, particles: 600, grassDensity: 8, animDistance: 80 },
-  ultra: { maxDpr: 2, textureSize: 512, shadows: "cascaded", fxaa: true, bloom: true, ssao: true, particles: 900, grassDensity: 10, animDistance: 120 },
+  low: { maxDpr: 1, textureSize: 256, shadows: "blob", anisotropy: 1, fxaa: false, bloom: false, ssao: false, particles: 200, grassDensity: 3.5, animDistance: 35 },
+  medium: { maxDpr: 1.5, textureSize: 256, shadows: "pcf1024", anisotropy: 2, fxaa: true, bloom: false, ssao: false, particles: 400, grassDensity: 6, animDistance: 50 },
+  high: { maxDpr: 2, textureSize: 512, shadows: "pcf2048", anisotropy: 4, fxaa: true, bloom: true, ssao: false, particles: 600, grassDensity: 8, animDistance: 80 },
+  ultra: { maxDpr: 2, textureSize: 512, shadows: "cascaded", anisotropy: 8, fxaa: true, bloom: true, ssao: true, particles: 900, grassDensity: 10, animDistance: 120 },
 };
 
+/** What the browser tells us about the device (all optional: browsers hide some of it). */
+export interface DeviceHints {
+  /** navigator.deviceMemory, in GB (Chrome and Android only, rounded down to a power of two). */
+  memoryGb?: number;
+  /** iPhone or iPad. Apple hides the GPU name, but every recent one handles Medium. */
+  ios?: boolean;
+  /** The WebGL renderer string, for example "Adreno (TM) 619". */
+  gpu?: string;
+}
+
+/** GPUs old or small enough that shadows and sharper textures would cost more than they give. */
+const WEAK_GPU = /Adreno[^0-9]*[2-5]\d\d\b|Mali-4\d\d|Mali-T\d+|PowerVR|SGX|Software|SwiftShader/i;
+
 /** Picks a tier for "Auto": phones get Low or Medium, computers get High. */
-export function autoTier(cores: number, mobile: boolean): Tier {
-  if (mobile) return cores >= 8 ? "medium" : "low";
-  return cores >= 8 ? "high" : "medium";
+export function autoTier(cores: number, mobile: boolean, hints: DeviceHints = {}): Tier {
+  if (!mobile) return cores >= 8 ? "high" : "medium";
+  if (hints.ios) return "medium";
+  if (hints.gpu && WEAK_GPU.test(hints.gpu)) return "low";
+  if (hints.memoryGb !== undefined && hints.memoryGb <= 3) return "low";
+  if (cores >= 8) return "medium";
+  // Six cores and 4 GB or more is a 2020+ mid-range phone: it can afford real shadows.
+  return cores >= 6 && (hints.memoryGb ?? 0) >= 4 ? "medium" : "low";
 }
