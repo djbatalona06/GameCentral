@@ -15,6 +15,8 @@ import death from "./screens/death.html?raw";
 import results from "./screens/results.html?raw";
 import credits from "./screens/credits.html?raw";
 import layoutEditor from "./screens/layout-editor.html?raw";
+import choice from "./screens/choice.html?raw";
+import between from "./screens/between.html?raw";
 
 export const TEMPLATES = {
   firstrun,
@@ -30,6 +32,8 @@ export const TEMPLATES = {
   results,
   credits,
   "layout-editor": layoutEditor,
+  choice,
+  between,
 } as const;
 
 export type ScreenId = keyof typeof TEMPLATES;

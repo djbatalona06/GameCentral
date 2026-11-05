@@ -176,9 +176,12 @@ export const ch07Script: ChapterScript = {
         lines: [
           { speaker: "Ines", text: "Explosives. Dredging rigs. Pumps. Enough to drain a lagoon." },
           { speaker: "Varek", text: "Good evening, Ines. You read faster than my lawyers." },
+          { speaker: "Varek", text: "I never saw you cross my yard. I should hire you.", if: { style: "ghost" } },
+          { speaker: "Varek", text: "My men tell me the deck has been... redecorated.", if: { style: "brawler" } },
           { speaker: "Varek", text: "Meridia isn't lost. It's underwater. I simply intend to take the water away." },
           { speaker: "Ines", text: "Drain it and the whole city collapses. Everything Catalina protected." },
           { speaker: "Varek", text: "Everything Catalina hid. There's a difference. See you at sea." },
+          { speaker: "Varek", text: "Do give my regards to the three museums.", if: { flag: "varek.bluffed" } },
         ],
       },
       { type: "emit", event: "end", delay: 11.5 },

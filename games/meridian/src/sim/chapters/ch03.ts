@@ -216,6 +216,9 @@ export const ch03Script: ChapterScript = {
         lines: [
           { speaker: "Ines", text: "No gold. Just a key. Green stone, carved with the meridian." },
           { speaker: "Ines", text: "'Three keys for three seas.' This is only the first." },
+          { speaker: "Varek", text: "Catalina's handwriting is lovely. Thank you for leaving it for me.", if: { flag: "archive.left_letter" } },
+          { speaker: "Varek", text: "You took her letter. Possessive. I respect that, and I will take it from you.", if: { flag: "archive.took_letter" } },
+          { speaker: "Varek", text: "I hear you let my lieutenant live. Sentimental.", if: { flag: "kessa.spared" } },
           { speaker: "Varek", text: "Then we will have such fun finding the other two. Together, or otherwise." },
         ],
       },

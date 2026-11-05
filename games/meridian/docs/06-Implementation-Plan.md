@@ -19,6 +19,7 @@
 | 13 | Art pass: procedural PBR, sky, water, skinned characters, set pieces, quality tiers, glTF drop-in pipeline | Done |
 | 14 | Audio pass: reverb per space, adaptive per-chapter music, surface footsteps, ambience, ducking, night mode | Done |
 | 15 | Store builds: Capacitor Android/iOS, icons, CI builds (debug APK, iOS compile check) | Done (store accounts and signing are the owner's step) |
+| 15b | Story choices: relationships, flags, endings, conditional dialogue, quiet moments, save v3, Act I retrofit (9 choices) | Done |
 | 16 | Real models via the asset slots (Poly Haven / ambientCG), KTX2 textures | Next |
 | 17 | Chapters 8–15 (Act II): new systems for diving/air, boats, heist stealth | Planned |
 | 18 | Chapters 16–22 (Act III), New Game+, challenge modes, cloud saves | Planned |

@@ -55,6 +55,12 @@ Playtime estimates are for a first playthrough with some exploration. Collectibl
 
 Act I came out shorter than first planned once it was built (Ch4–7 play in about 30 minutes each, not 65–75), so those minutes moved to the Act II and III targets. The 25-hour total is still a target for the full release: right now about 3.2 hours of story are playable.
 
+## Chapter template
+Every chapter has the same five beats (stored as `beats` in the registry, written out in `src/sim/chapters/story/beats.ts`): **Hook, Rising (a character moment), Set piece, Choice, Fallout** (how the choice echoes next chapter). Chapters 8 to 22 carry `branchNotes` instead until they are built.
+
+## Choices and endings
+The story is a single spine with choices that converge. Tracked: Bram's trust, Kessa's respect and Ines's Keeper/Seeker stance. Three endings: **The Keeper**, **Open Water**, **The Lantern**. Details: `characters.md`, `choices.md`, `branching-map.md`.
+
 ## Themes
 - What do we owe the people who hid things for a reason?
 - Found family: Ines and Bram's trust is broken and rebuilt.

@@ -4,8 +4,10 @@ import type { V3 } from "../math";
 import type { LevelData } from "../world/types";
 import type { WeaponId } from "../combat/weapons";
 import type { ButtonAction } from "../../input/actions";
+import type { Condition } from "./Conditions";
+import type { CharacterId, Effects } from "./State";
 
-export type Speaker = "Ines" | "Bram" | "Varek" | "Kessa" | "Gilt Radio" | "Mercenary" | "Narrator";
+export type Speaker = "Ines" | "Bram" | "Varek" | "Kessa" | "Catalina" | "Vendor" | "Caravaneer" | "Gilt Radio" | "Mercenary" | "Narrator";
 
 export interface Line {
   speaker: Speaker;
@@ -52,6 +54,13 @@ export type Action =
   | { type: "vehicle"; track: string }
   /** Brings in the enemy jeeps of a group. */
   | { type: "pursuit"; group: string }
+  /** Asks the player something. The game waits for dialogue to finish and for any fight to end first. */
+  | ({ type: "choice" } & ChoiceDef)
+  /** Runs `then` or `otherwise` depending on the story so far. */
+  | { type: "branch"; if: Condition; then: Action[]; otherwise?: Action[] }
+  | { type: "set"; flag: string }
+  | { type: "rel"; who: CharacterId; delta: number }
+  | { type: "stance"; delta: number }
   | { type: "complete" };
 
 /**
@@ -59,7 +68,7 @@ export type Action =
  * Hazards are left out on purpose: a sweep (a tunnel, an avalanche) is a moment, not a state,
  * and replaying it would start it again on top of the player.
  */
-export const WORLD_ACTIONS: Action["type"][] = ["remove", "reveal", "revealInteract", "objective", "spawn", "give", "music", "mover", "weather", "searchlight"];
+export const WORLD_ACTIONS: Action["type"][] = ["remove", "reveal", "revealInteract", "objective", "spawn", "give", "music", "mover", "weather", "searchlight", "branch"];
 
 export type PuzzleDef =
   | { id: string; type: "pillars"; pillars: string[]; solution: number[]; initial: number[]; onSolve: string; hint: string }
@@ -94,8 +103,30 @@ export interface ChapterScript {
   events: Record<string, Action[]>;
   puzzles: PuzzleDef[];
   journal: JournalEntry[];
+  /** Quiet talks offered after the chapter (at most three are shown). */
+  downtime?: DowntimeTalk[];
   /** Medal goals shown on the results screen. */
   parTimeMinutes: number;
+}
+
+/** Every chapter follows the same shape, so a writer always knows where a character moment goes. */
+export interface ChapterBeats {
+  hook: string;
+  rising: string;
+  setPiece: string;
+  choice: string;
+  fallout: string;
+}
+
+/** A short talk after a chapter. The player picks one; skipping is always allowed. */
+export interface DowntimeTalk {
+  id: string;
+  /** Button text, e.g. "Sit with Bram". */
+  label: string;
+  /** Only offered when true. */
+  requires?: Condition;
+  lines: Line[];
+  effects?: Effects;
 }
 
 export interface ChapterDef {
@@ -106,6 +137,10 @@ export interface ChapterDef {
   synopsis: string;
   /** Rough minutes for a first playthrough including exploration. */
   estMinutes: number;
+  /** The five story beats of the chapter (see docs/story/outline.md). */
+  beats?: ChapterBeats;
+  /** Design notes for chapters that are not built yet: where the story can branch. */
+  branchNotes?: string;
   playable: boolean;
   build?: () => LevelData;
   script?: ChapterScript;

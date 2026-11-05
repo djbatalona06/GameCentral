@@ -11,10 +11,10 @@ Meridian has no server. "Backend" here means the data the game stores on the dev
 
 If IndexedDB is unavailable (some private-browsing modes), an in-memory store is used and the main menu warns that progress won't be kept.
 
-## SaveFile (version 2)
+## SaveFile (version 3)
 ```ts
 SaveFile {
-  version: 2
+  version: 3
   slot: number
   createdAt, updatedAt: ISO date strings
   playtimeSec: number
@@ -25,6 +25,15 @@ SaveFile {
   journal: string[]                    // unlocked journal entry ids
   unlocks: string[]
   newGamePlus: boolean
+  story: StoryState                    // what the story remembers between chapters (new in v3)
+}
+
+StoryState {
+  flags: { [name]: true }              // things that happened, e.g. "kessa.spared"
+  rel: { bram: 0..10, kessa: 0..10 }   // Bram's trust, Kessa's respect
+  stance: -5..5                        // Keeper (negative) to Seeker (positive)
+  choices: { [choiceId]: optionId }
+  style: "ghost" | "brawler" | "mixed" // how the last chapter was played
 }
 
 ChapterProgress { completed, bestTimeSec?, treasures: string[], medals: string[], lastStats? }
@@ -36,6 +45,8 @@ Snapshot {                              // everything needed to rebuild a checkp
   loadout { sidearm, long: {id, mag, reserve} | null, active, grenades, bottles }
   objective, stats
   pending: { event, in }[]              // scheduled events that hadn't fired yet
+  story?: StoryState                    // restored directly, never replayed (so nothing is counted twice)
+  openChoices?: string[]                // questions asked but not yet answered
 }
 ```
 
@@ -48,7 +59,7 @@ Snapshot.firedEvents ── refer to ──> ChapterScript.events keys
 ```
 
 ### Migrations
-`src/save/migrations.ts` upgrades saves one version at a time (v1 → v2 → …). Upgraded saves are written back so migration happens once. Saves from a newer version are refused with a clear message. A test covers the v1 → v2 path.
+`src/save/migrations.ts` upgrades saves one version at a time (v1 → v2 → v3 → …). v2 → v3 adds a neutral `story`; choices made before v3 cannot be recovered. Upgraded saves are written back so migration happens once. Saves from a newer version are refused with a clear message. A test covers the v1 → v2 path.
 
 ## Content schema (chapters)
 ```ts
@@ -64,14 +75,24 @@ LevelData {
 }
 
 ChapterScript {
-  startLoadout, onStart: Action[], events: { [eventName]: Action[] }, puzzles, journal, parTimeMinutes
+  startLoadout, onStart: Action[], events: { [eventName]: Action[] }, puzzles, journal, parTimeMinutes,
+  downtime?: DowntimeTalk[]            // optional talks after the chapter
 }
+
+ChapterDef also has: beats? (hook, rising, setPiece, choice, fallout) and branchNotes? (for unbuilt chapters)
 
 Action = dialogue | objective | spawn | remove | reveal | revealInteract | journal | cutscene
        | emit (delayed event) | tutorial | music | shake | give | stealth | checkpoint
        | mover | hazard | weather | searchlight (switch on/off) | vehicle (enter a track) | pursuit (spawn enemy jeeps)
+       | choice (ask the player) | branch (if / then / otherwise) | set (flag) | rel (trust or respect) | stance
        | complete
+
+Line { speaker, text, duration?, if?: Condition }          // a line is only said when its rule holds
+Condition = flag | treasure | rel (min/max) | stance (keeper/seeker) | chose (choice, option) | style | all | any | not
+ChoiceDef { id, prompt, speaker?, options: { id, label, hint?, requires?, effects? }[], defaultOption, timeoutSec? }
+Effects { rel?: { bram?, kessa? }, stance?, set?: string[] }
 ```
+Picking option `o` of choice `c` applies its effects once, records `choices[c] = o`, then raises the story event `"c:o"`. Chapter story (choices, reactions, quiet talks) is kept apart from level layout in `src/sim/chapters/story/chNN.story.ts` and merged by `withStory`.
 Event names come from triggers, interactables, puzzles (`onSolve`), wave clears (`waveClear:<wave>`, `arenaClear:<arena>`), boss phases (`bossPhase:2`), cleared chases (`pursuitClear:<group>`) and searchlight alarms (`searchlightAlarm:<id>`). Puzzle types: pillars, sequence, plates, bells.
 
 On checkpoint restore, world-changing actions are replayed. Hazards are deliberately **not** replayed (a tunnel sweep is a moment, not a state).

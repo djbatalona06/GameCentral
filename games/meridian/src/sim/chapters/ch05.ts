@@ -150,7 +150,8 @@ export const ch05Script: ChapterScript = {
         shots: [{ from: { x: 3, y: 33, z: 144 }, to: { x: -3, y: 33, z: 144 }, target: { x: 0, y: 31, z: 149 }, duration: 4 }],
         lines: [
           { speaker: "Ines", text: "The big bell's hollow. There's something inside." },
-          { speaker: "Bram", text: "And the whole mountain heard you ring it. The snow's moving, Ines!" },
+          { speaker: "Bram", text: "And the whole mountain heard you ring it. The snow's moving, Ines!", if: { not: { flag: "bells.muffled" } } },
+          { speaker: "Bram", text: "Hardly a whisper. But the snow's moving anyway, Ines. Run!", if: { flag: "bells.muffled" } },
         ],
       },
       { type: "music", mood: "tension" },
