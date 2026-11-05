@@ -25,7 +25,7 @@ describe("settings migration", () => {
   it("keeps v1 touch positions (one flat set, as landscape is the only orientation)", () => {
     const v1 = { version: 1, controls: { touchPositions: { jump: { x: 10, y: 20 } } } };
     const out = migrateSettings(v1) as ReturnType<typeof defaultSettings>;
-    expect(out.version).toBe(4);
+    expect(out.version).toBe(5);
     expect(out.controls.touchPositions).toEqual({ jump: { x: 10, y: 20 } });
   });
 
@@ -35,7 +35,7 @@ describe("settings migration", () => {
       controls: { touchPositions: { landscape: { swapWeapon: { x: 1, y: 1 }, navAssist: { x: 2, y: 2 }, jump: { x: 3, y: 3 } }, portrait: {} } },
     };
     const out = migrateSettings(v2) as ReturnType<typeof defaultSettings>;
-    expect(out.version).toBe(4);
+    expect(out.version).toBe(5);
     expect(out.controls.touchPositions).toEqual({ jump: { x: 3, y: 3 } });
   });
 
@@ -45,13 +45,13 @@ describe("settings migration", () => {
       controls: { touchPositions: { landscape: { fire: { x: 5, y: 6 } }, portrait: { fire: { x: 9, y: 9 }, jump: { x: 8, y: 8 } } } },
     };
     const out = migrateSettings(v3) as ReturnType<typeof defaultSettings>;
-    expect(out.version).toBe(4);
+    expect(out.version).toBe(5);
     expect(out.controls.touchPositions).toEqual({ fire: { x: 5, y: 6 } });
   });
 
   it("copes with settings that have no saved positions", () => {
     const out = migrateSettings({ version: 3, controls: {} }) as { version: number; controls: { touchPositions: unknown } };
-    expect(out.version).toBe(4);
+    expect(out.version).toBe(5);
     expect(out.controls.touchPositions).toEqual({});
   });
 

@@ -1,0 +1,152 @@
+# Builds Meridian for computers (Windows, Mac, Linux) and Android, and publishes them as one
+# GitHub Release, so players can download them from the README's links:
+#   https://github.com/djbatalona06/GameCentral/releases/latest
+#
+# How to publish a new version: Actions -> "Meridian release" -> Run workflow, and type the
+# version (for example 0.2.0). Pushing a tag like meridian-v0.2.0 does the same.
+# Pull requests that touch the desktop app only build the files (no release), as a check.
+name: Meridian release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, for example 0.2.0"
+        required: true
+        default: "0.2.0"
+  push:
+    tags: ["meridian-v*"]
+  pull_request:
+    paths:
+      - "games/meridian/desktop/**"
+      - "games/meridian/electron-builder.yml"
+      - ".github/workflows/meridian-release.yml"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: games/meridian
+
+jobs:
+  desktop:
+    name: Desktop app (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: Linux, files: "desktop-release/*.AppImage" }
+          - { os: windows-latest, name: Windows, files: "desktop-release/*.exe" }
+          - { os: macos-latest, name: Mac, files: "desktop-release/*.dmg" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      # The apps are not code-signed yet (that needs paid developer accounts), so do not look for a certificate.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: games/meridian/package-lock.json
+
+      - run: npm ci
+
+      - name: Unit tests
+        if: matrix.os == 'ubuntu-latest'
+        run: npm test
+
+      - name: Set the version number
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          V="${{ github.event.inputs.version }}"
+          [ -z "$V" ] && V="${GITHUB_REF_NAME#meridian-v}"
+          npm version "$V" --no-git-tag-version --allow-same-version
+
+      - name: Build the game and package the app
+        run: npm run desktop:build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meridian-${{ matrix.name }}
+          path: games/meridian/${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    name: Android app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: games/meridian/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - run: npm ci && npm run build && npx cap sync android
+
+      - name: Build the APK
+        working-directory: games/meridian/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Give it a clear name
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Meridian-android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meridian-Android
+          path: games/meridian/Meridian-android.apk
+          retention-days: 14
+
+  release:
+    name: Publish the release
+    needs: [desktop, android]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+
+      - name: Work out the tag
+        id: tag
+        run: |
+          V="${{ github.event.inputs.version }}"
+          [ -z "$V" ] && V="${GITHUB_REF_NAME#meridian-v}"
+          echo "tag=meridian-v$V" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Meridian ${{ steps.tag.outputs.version }}
+          make_latest: true
+          body: |
+            Download the file for your device:
+
+            - **Windows:** `Meridian-Setup-…-windows.exe` installs the game. `…-windows-portable.exe` runs without installing.
+            - **Mac:** `Meridian-…-mac.dmg`. The first time, right-click the app and choose **Open** (it is not signed by Apple yet).
+            - **Linux:** `Meridian-…-linux.AppImage`. Make it runnable (right-click, Properties, "Allow executing"), then double-click it.
+            - **Android:** `Meridian-android.apk`. Open it on your phone and allow installing from your browser or files app.
+            - **iPhone and iPad:** play in Safari and add it to your Home Screen: https://djbatalona06.github.io/GameCentral/
+          files: files/*

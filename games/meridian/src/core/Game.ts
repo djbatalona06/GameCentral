@@ -24,7 +24,8 @@ import { SceneRenderer } from "../render/SceneRenderer";
 import { AudioEngine } from "../audio/AudioEngine";
 import { UIManager } from "../ui/UIManager";
 import { HUD } from "../ui/HUD";
-import { renderSettingsTab, padName } from "../ui/SettingsScreen";
+import { renderSettingsTab, padSpoken } from "../ui/SettingsScreen";
+import { desktopBridge, isComputer, setFullscreen } from "../platform/desktop";
 
 type AppState = "menu" | "playing" | "paused" | "choosing" | "dead" | "results";
 
@@ -61,11 +62,13 @@ export class Game {
   private acc = 0;
   private lastRenderTime = 0;
   private pausedForRotate = false;
+  /** Menus show the Blender key art behind them (body.art-backdrop). */
+  private artShown = false;
+  /** Current strength of the speed-line overlay (0..1). */
+  private speedLines = 0;
   private lastTime = 0;
   private frame = 0;
   private sessionPlaytime = 0;
-  private menuSim: GameSim | null = null;
-  private menuOrbit = 0;
   private listening: { action: ButtonAction; device: "keys" | "pad"; done: () => void } | null = null;
   private menuRepeat = 0;
   private settingsSaveTimer = 0;
@@ -90,8 +93,20 @@ export class Game {
     await this.settingsStore.load();
     this.saves = new SaveManager(store);
     // Phones start at a steady 30 fps (cooler, longer battery); players can raise it in Video.
-    if (!this.settings.firstRunDone && TouchControls.isTouchDevice()) this.settings.video.fpsCap = 30;
+    if (!this.settings.firstRunDone && TouchControls.isTouchDevice() && !isComputer()) this.settings.video.fpsCap = 30;
+    // First launch follows the player's system settings: "reduce motion" and "increase contrast".
+    if (!this.settings.firstRunDone && window.matchMedia) {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) this.settings.a11y.reduceMotion = true;
+      if (window.matchMedia("(prefers-contrast: more)").matches) this.settings.a11y.highContrast = true;
+    }
+    // Menu key art (absolute URLs, so they work on the website, the phone apps and the desktop app).
+    const art = (file: string) => `url("${new URL(`${import.meta.env.BASE_URL}backgrounds/${file}`, document.baseURI).href}")`;
+    document.documentElement.style.setProperty("--key-art-sm", art("key-art-sm.webp"));
+    document.documentElement.style.setProperty("--key-art-lg", art("key-art.webp"));
+    document.body.classList.toggle("computer", isComputer());
+    document.body.classList.toggle("desktop-app", !!desktopBridge());
     // The game always opens on the title (home) screen. Quick setup lives in the main menu.
+    // (This comes after the first-launch checks above, which only run until this flag is set.)
     if (!this.settings.firstRunDone) {
       this.settings.firstRunDone = true;
       void this.settingsStore.save();
@@ -206,6 +221,13 @@ export class Game {
     document.addEventListener("pointerlockchange", () => {
       if (!document.pointerLockElement && this.state === "playing" && this.keyboard.pointerLookEnabled && this.input.device === "keyboard") this.pause();
     });
+    // Full screen on a computer: F11 in the desktop app (browsers handle F11 themselves) or Alt+Enter anywhere.
+    window.addEventListener("keydown", (e) => {
+      if ((e.code === "Enter" && e.altKey) || (e.code === "F11" && desktopBridge())) {
+        e.preventDefault();
+        setFullscreen();
+      }
+    });
     window.addEventListener("keydown", (e) => {
       if (this.listening?.device === "keys") {
         e.preventDefault();
@@ -241,7 +263,7 @@ export class Game {
     } else if (l.device === "pad" && typeof code === "number") {
       for (const a of Object.keys(c.pad) as ButtonAction[]) c.pad[a] = c.pad[a].filter((k) => k !== code);
       c.pad[l.action] = [code];
-      this.ui.announce(`${l.action} set to ${padName(code)}`);
+      this.ui.announce(`${l.action} set to ${padSpoken(code, this.settings.controls)}`);
     }
     this.settingsChanged();
     l.done();
@@ -249,10 +271,12 @@ export class Game {
 
   // ------------------------------------------------------------------ menu screens
 
+  /**
+   * Menus are drawn over the Blender key art (public/backgrounds/key-art.webp), so no 3D scene
+   * is needed behind them: free the last level's memory and let the GPU rest.
+   */
   private startMenuBackdrop(): void {
-    const ch = CHAPTERS[0];
-    this.menuSim = new GameSim(ch, { ...this.settings.gameplay, invulnerable: true });
-    this.renderer.load(this.menuSim);
+    this.renderer.dispose();
   }
 
   /** Quick setup: text size, subtitles and accessibility presets. Opened from the main menu. */
@@ -312,16 +336,17 @@ export class Game {
       this.audio.setMood("explore");
       void this.showMainMenu();
     };
-    // On a computer any key starts, not just Enter on the focused button.
+    // On a computer any key starts, like a console title screen. Keys used for full screen or for
+    // switching windows (F11, Alt+Enter, Tab, the Windows/Command key) don't count.
     const onKey = (e: KeyboardEvent) => {
-      if (e.repeat || e.code === "Tab" || e.code === "Escape" || e.code.startsWith("Alt") || e.code.startsWith("Shift")) return;
+      if (e.repeat || e.altKey || ["Tab", "Escape", "F11", "MetaLeft", "MetaRight"].includes(e.code) || e.code.startsWith("Alt") || e.code.startsWith("Shift")) return;
       e.preventDefault();
       start();
     };
     this.ui.show("title", {
       init: (el) => {
         const btn = el.querySelector('[data-action="start"]') as HTMLButtonElement;
-        btn.textContent = TouchControls.isTouchDevice() ? "Tap to start" : "Click or press any key";
+        btn.textContent = isComputer() ? "Click or press any key" : "Tap to start";
         window.addEventListener("keydown", onKey);
       },
       action: () => start(),
@@ -354,6 +379,7 @@ export class Game {
         if (a === "settings") this.showSettings("a11y");
         if (a === "quick-setup") this.showFirstRun();
         if (a === "credits") this.ui.push("credits", { action: () => this.ui.pop() });
+        if (a === "quit-app") desktopBridge()?.quit();
       },
       back: () => {
         this.showTitle();
@@ -459,14 +485,25 @@ export class Game {
     if (this.debug) CHAPTERS.filter((c) => c.playable).forEach((c) => unlocked.add(c.id));
     this.ui.push("chapters", {
       init: (el) => {
-        el.querySelector('[data-role="total-time"]')!.textContent = `${CHAPTERS.length} chapters · about ${Math.round(totalStoryMinutes() / 60)} hours of story planned. Chapters 1–3 are playable in this build.`;
+        const playable = CHAPTERS.filter((c) => c.playable).length;
+        el.querySelector('[data-role="total-time"]')!.textContent = `${CHAPTERS.length} chapters · about ${Math.round(totalStoryMinutes() / 60)} hours of story planned. Chapters 1–${playable} are playable in this build.`;
         const list = el.querySelector('[data-role="chapter-list"]')!;
         for (const ch of CHAPTERS) {
           const li = document.createElement("li");
           const b = document.createElement("button");
           const open = ch.playable && unlocked.has(ch.id);
-          b.innerHTML = "<strong></strong><small></small>";
+          b.innerHTML = "<span class=\"card-text\"><strong></strong><small></small></span>";
           b.querySelector("strong")!.textContent = `${ch.number}. ${ch.title}`;
+          if (ch.playable) {
+            // The chapter's Blender-rendered card (assets-src/blender). Decorative: the text says it all.
+            const img = document.createElement("img");
+            img.src = `${import.meta.env.BASE_URL}backgrounds/${ch.id}-card.webp`;
+            img.alt = "";
+            img.loading = "lazy";
+            img.className = "card-art";
+            img.onerror = () => img.remove();
+            b.prepend(img);
+          }
           const best = all.map((s) => s.chapters[ch.id]).find((p) => p?.completed);
           const treasures = ch.build ? ch.build().collectibles.length : 0;
           const found = new Set(all.flatMap((s) => s.chapters[ch.id]?.treasures ?? [])).size;
@@ -562,7 +599,6 @@ export class Game {
   startChapter(ch: ChapterDef, snapshot: Snapshot | null): void {
     this.ui.clear();
     this.audio.stopSpeech();
-    this.menuSim = null;
     // A chapter that is already finished keeps the answers given the first time (nothing is counted twice).
     const replaying = !!this.save?.chapters[ch.id]?.completed;
     this.sim = new GameSim(ch, { ...this.settings.gameplay }, snapshot ?? undefined, Date.now() & 0xffff, this.save?.story, replaying);
@@ -1108,22 +1144,39 @@ export class Game {
       this.audio.update(dt, sim, this.state === "playing");
       this.hud.update(dt, sim, this.input.device as InputFrame["device"], this.renderer.fps);
       this.hud.setClickToLook(this.state === "playing" && this.inputMode === "desktop" && !this.keyboard.locked && !sim.cutscene);
-    } else if (this.menuSim) {
-      this.audio.update(dt, null, false);
-      // Slow orbit over the beach behind the menus.
-      this.menuOrbit += dt * 0.05;
-      const r = 26;
-      this.menuSim.cam.rail = {
-        position: { x: Math.sin(this.menuOrbit) * r, y: 9, z: 40 + Math.cos(this.menuOrbit) * r },
-        target: { x: 0, y: 2, z: 52 },
-      };
-    }
+    } else this.audio.update(dt, null, false);
+    this.updateBackdropAndSpeed(dt);
     // The cap is a time grid, so it holds 30 or 60 fps on 60, 90 and 120 Hz screens alike.
     if (!this.renderer.shouldRender(t)) return;
     const renderDt = this.lastRenderTime ? Math.min(0.1, (t - this.lastRenderTime) / 1000) : dt;
     this.lastRenderTime = t;
     this.renderer.render(renderDt);
   };
+
+  /**
+   * Menus show the key art; while playing, speed lines at the screen edges show a sprint or the
+   * jeep's boost. Movement effects off (or Reduce motion) removes them.
+   */
+  private updateBackdropAndSpeed(dt: number): void {
+    const art = this.state === "menu";
+    if (art !== this.artShown) {
+      this.artShown = art;
+      document.body.classList.toggle("art-backdrop", art);
+    }
+    const sim = this.sim;
+    const a = this.settings.a11y;
+    let want = 0;
+    if (sim && this.state === "playing" && a.motionEffects && !a.reduceMotion && !sim.cutscene) {
+      const v = sim.vehicle;
+      if (v && v.track.def.mode !== "gunner") want = Math.max(0, Math.min(1, (v.speed / v.track.def.speed - 1) * 3));
+      else if (sim.player.sprinting && sim.player.grounded) want = 0.35;
+    }
+    const next = this.speedLines + (want - this.speedLines) * Math.min(1, dt * (want > this.speedLines ? 6 : 3));
+    if (Math.abs(next - this.speedLines) > 0.005 || (want === 0 && this.speedLines !== 0 && next < 0.01)) {
+      this.speedLines = next < 0.01 && want === 0 ? 0 : next;
+      document.documentElement.style.setProperty("--speed", this.speedLines.toFixed(3));
+    }
+  }
 
   /** Feeds the left-side gun and goal cards of the touch controls. */
   private syncTouchCards(sim: GameSim): void {

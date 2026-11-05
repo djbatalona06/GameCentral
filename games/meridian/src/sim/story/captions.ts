@@ -18,7 +18,8 @@ export function splitCaption(text: string, max = CAPTION_MAX): string[] {
   if (clean.length <= max) return clean ? [clean] : [];
 
   // Sentences first ("Wait. What's that?" -> two pieces), keeping punctuation with its sentence.
-  const sentences = clean.match(/[^.!?…]+(?:[.!?…]+["'’”)]*|$)\s*/g)?.map((s) => s.trim()).filter(Boolean) ?? [clean];
+  // The leading `[.!?…]*` keeps an opening ellipsis ("...Varek pays for results") on its sentence.
+  const sentences = clean.match(/[.!?…]*[^.!?…]+(?:[.!?…]+["'’”)]*|$)\s*/g)?.map((s) => s.trim()).filter(Boolean) ?? [clean];
   const out: string[] = [];
   let cur = "";
   const flush = () => {

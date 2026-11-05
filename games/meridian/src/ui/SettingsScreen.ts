@@ -3,6 +3,7 @@
 import { ACTION_LABELS, BUTTON_ACTIONS, type ButtonAction } from "../input/actions";
 import { PRESETS, type Settings } from "../core/Settings";
 import { DIFFICULTY_NAMES } from "../sim/GameSim";
+import { isComputer, isFullscreen, setFullscreen } from "../platform/desktop";
 import { keyLabel, padName } from "./controlText";
 
 type Tab = "a11y" | "gameplay" | "controls" | "audio" | "video";
@@ -20,6 +21,8 @@ interface Option {
   step?: number;
   format?: (v: number) => string;
   options?: Array<{ value: string; label: string }>;
+  /** Only shown when this returns true (for example, desktop-only display options). */
+  when?: () => boolean;
 }
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -42,6 +45,7 @@ export const OPTIONS: Option[] = [
   { tab: "a11y", section: "Hearing", label: "Sound indicators", desc: "Shows gunfire, explosions and noises on screen with direction.", type: "toggle", get: (s) => s.a11y.soundIndicators, set: (s, v) => (s.a11y.soundIndicators = v as boolean) },
   { tab: "a11y", label: "Threat indicators", desc: "Arrows point to enemies who are noticing or attacking you.", type: "toggle", get: (s) => s.a11y.threatIndicators, set: (s, v) => (s.a11y.threatIndicators = v as boolean) },
   { tab: "a11y", section: "Motion", label: "Reduce motion", desc: "Calmer camera and fewer animated effects.", type: "toggle", get: (s) => s.a11y.reduceMotion, set: (s, v) => (s.a11y.reduceMotion = v as boolean) },
+  { tab: "a11y", section: "Motion", label: "Movement effects", desc: "Speed lines, movement trails and dust. Reduce motion keeps only gentle dust.", type: "toggle", get: (s) => s.a11y.motionEffects, set: (s, v) => (s.a11y.motionEffects = v as boolean) },
   { tab: "a11y", label: "Camera shake", type: "slider", min: 0, max: 1, step: 0.1, format: pct, get: (s) => s.a11y.cameraShake, set: (s, v) => (s.a11y.cameraShake = v as number) },
   { tab: "a11y", label: "Field of view", type: "slider", min: 0.85, max: 1.25, step: 0.05, format: x, get: (s) => s.gameplay.fovScale, set: (s, v) => (s.gameplay.fovScale = v as number) },
   { tab: "a11y", label: "Tutorial hints", type: "toggle", get: (s) => s.a11y.tutorialHints, set: (s, v) => (s.a11y.tutorialHints = v as boolean) },
@@ -64,9 +68,13 @@ export const OPTIONS: Option[] = [
 
   // Controls
   { tab: "controls", section: "Camera", label: "Look sensitivity", type: "slider", min: 0.3, max: 2.5, step: 0.05, format: x, get: (s) => s.controls.lookSensitivity, set: (s, v) => (s.controls.lookSensitivity = v as number) },
+  { tab: "controls", label: "Vertical look speed", desc: "Up and down, compared with left and right.", type: "slider", min: 0.4, max: 1.6, step: 0.05, format: x, get: (s) => s.controls.lookYScale, set: (s, v) => (s.controls.lookYScale = v as number) },
   { tab: "controls", label: "Aim sensitivity", type: "slider", min: 0.2, max: 1.5, step: 0.05, format: x, get: (s) => s.controls.aimSensitivity, set: (s, v) => (s.controls.aimSensitivity = v as number) },
   { tab: "controls", label: "Invert vertical look", type: "toggle", get: (s) => s.gameplay.invertY, set: (s, v) => (s.gameplay.invertY = v as boolean) },
+  { tab: "controls", label: "Raw mouse input", desc: "Ignores your computer's pointer acceleration, so aim feels the same at any hand speed.", type: "toggle", get: (s) => s.controls.rawMouse, set: (s, v) => (s.controls.rawMouse = v as boolean) },
   { tab: "controls", label: "Mouse turns the hero (shooter style)", desc: "Keyboard and mouse: you always face where the mouse points and A/D sidestep. Off: you face the way you walk.", type: "toggle", get: (s) => s.gameplay.desktopStyle === "shooter", set: (s, v) => (s.gameplay.desktopStyle = v ? "shooter" : "adventure") },
+  { tab: "controls", section: "Controller", label: "Button names", desc: "Auto reads them from your controller.", type: "select", options: [{ value: "auto", label: "Auto" }, { value: "xbox", label: "Xbox (A B X Y)" }, { value: "playstation", label: "PlayStation (✕ ○ □ △)" }, { value: "switch", label: "Nintendo Switch (B A Y X)" }], get: (s) => s.controls.glyphs, set: (s, v) => (s.controls.glyphs = v as Settings["controls"]["glyphs"]) },
+  { tab: "controls", label: "Stick deadzone", desc: "Raise it if the camera drifts on its own; lower it for finer control.", type: "slider", min: 0.05, max: 0.35, step: 0.01, format: pct, get: (s) => s.controls.stickDeadzone, set: (s, v) => (s.controls.stickDeadzone = v as number) },
   { tab: "controls", label: "Gyro aiming", desc: "Tilt your phone to fine-tune aim while aiming.", type: "toggle", get: (s) => s.controls.gyroAim, set: (s, v) => (s.controls.gyroAim = v as boolean) },
   { tab: "controls", section: "Hold or toggle", label: "Toggle aim", type: "toggle", get: (s) => s.controls.toggleAim, set: (s, v) => (s.controls.toggleAim = v as boolean) },
   { tab: "controls", label: "Toggle sprint", type: "toggle", get: (s) => s.controls.toggleSprint, set: (s, v) => (s.controls.toggleSprint = v as boolean) },
@@ -88,8 +96,11 @@ export const OPTIONS: Option[] = [
   { tab: "audio", label: "Character chatter", desc: "Short extra lines from Ines and Bram while you explore.", type: "toggle", get: (s) => s.gameplay.chatter, set: (s, v) => (s.gameplay.chatter = v as boolean) },
 
   // Video
-  { tab: "video", label: "Quality", desc: "Auto picks a level for your device. Applies on next level load.", type: "select", options: [{ value: "auto", label: "Auto" }, { value: "low", label: "Low (best battery)" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }, { value: "ultra", label: "Ultra (desktop)" }], get: (s) => s.video.quality, set: (s, v) => (s.video.quality = v as Settings["video"]["quality"]) },
-  { tab: "video", label: "Target frame rate", type: "select", options: [{ value: "30", label: "30 fps (battery saver)" }, { value: "60", label: "60 fps" }], get: (s) => String(s.video.fpsCap), set: (s, v) => (s.video.fpsCap = Number(v) as 30 | 60) },
+  { tab: "video", section: "Display", label: "Full screen", desc: "Also F11 on a computer.", type: "toggle", when: isComputer, get: () => isFullscreen(), set: (_s, v) => setFullscreen(v as boolean) },
+  { tab: "video", section: "Picture", label: "Quality", desc: "Auto picks a level for your device. Applies on next level load.", type: "select", options: [{ value: "auto", label: "Auto" }, { value: "low", label: "Low (best battery)" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }, { value: "ultra", label: "Ultra (desktop)" }], get: (s) => s.video.quality, set: (s, v) => (s.video.quality = v as Settings["video"]["quality"]) },
+  { tab: "video", label: "Target frame rate", type: "select", options: [{ value: "30", label: "30 fps (battery saver)" }, { value: "60", label: "60 fps" }, { value: "90", label: "90 fps" }, { value: "120", label: "120 fps" }, { value: "144", label: "144 fps" }], get: (s) => String(s.video.fpsCap), set: (s, v) => (s.video.fpsCap = Number(v) as Settings["video"]["fpsCap"]) },
+  { tab: "video", label: "Render scale", desc: "Lower draws the 3D view at fewer pixels: faster, a little softer. Menus and text stay sharp.", type: "slider", min: 0.5, max: 1, step: 0.05, format: pct, get: (s) => s.video.renderScale, set: (s, v) => (s.video.renderScale = v as number) },
+  { tab: "video", label: "Motion blur", desc: "Blurs fast-moving characters and objects (High and Ultra quality). Off when Reduce motion is on.", type: "select", options: [{ value: "off", label: "Off" }, { value: "low", label: "Low" }, { value: "high", label: "High" }], get: (s) => s.video.motionBlur, set: (s, v) => (s.video.motionBlur = v as Settings["video"]["motionBlur"]) },
   { tab: "video", label: "Dynamic resolution", desc: "Lowers resolution briefly to keep the frame rate smooth.", type: "toggle", get: (s) => s.video.dynamicResolution, set: (s, v) => (s.video.dynamicResolution = v as boolean) },
   { tab: "video", label: "Brightness", type: "slider", min: 0.6, max: 1.5, step: 0.05, format: x, get: (s) => s.video.brightness, set: (s, v) => (s.video.brightness = v as number) },
   { tab: "video", label: "Show frame rate", type: "toggle", get: (s) => s.video.showFps, set: (s, v) => (s.video.showFps = v as boolean) },
@@ -125,7 +136,7 @@ export function renderSettingsTab(panel: HTMLElement, tab: Tab, hooks: SettingsS
     }
     panel.appendChild(grid);
   }
-  for (const o of OPTIONS.filter((x) => x.tab === tab)) {
+  for (const o of OPTIONS.filter((x) => x.tab === tab && (!x.when || x.when()))) {
     if (o.section) {
       const h = document.createElement("h2");
       h.textContent = o.section;
@@ -209,7 +220,7 @@ export function renderSettingsTab(panel: HTMLElement, tab: Tab, hooks: SettingsS
       for (const dev of ["keys", "pad"] as const) {
         const b = document.createElement("button");
         b.className = "binding";
-        const current = dev === "keys" ? s.controls.keys[a].map(keyLabel).join(" / ") : s.controls.pad[a].map(padName).join(" / ");
+        const current = dev === "keys" ? s.controls.keys[a].map(keyLabel).join(" / ") : s.controls.pad[a].map((i) => padName(i, s.controls)).join(" / ");
         b.textContent = current || "Unbound";
         b.setAttribute("aria-label", `${ACTION_LABELS[a]} ${dev === "keys" ? "keyboard" : "controller"}: ${current}. Press to change.`);
         b.addEventListener("click", () => {
@@ -224,4 +235,4 @@ export function renderSettingsTab(panel: HTMLElement, tab: Tab, hooks: SettingsS
   }
 }
 
-export { padName } from "./controlText";
+export { padName, padSpoken } from "./controlText";

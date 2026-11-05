@@ -266,3 +266,18 @@ body.reduce-motion .hud * { animation: none !important; transition: none !import
 .meter-bar.spotted span { background: linear-gradient(90deg, #ffd166, #ff5a4e); }
 .meter-bar.jeep span { background: #3ecf8e; }
 .meter-bar em { position: absolute; left: 0; right: 0; top: 14px; text-align: center; font-style: normal; font-size: var(--fs-small); color: var(--ink-dim); }
+
+/* Speed lines at the screen edges while sprinting or boosting the jeep. Their strength comes
+   from --speed (set by Game.ts). They do not flicker or flash, and Movement effects off or
+   Reduce motion removes them. */
+#speedlines {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: calc(var(--speed, 0) * 0.5);
+  background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 255, 255, 0) 0deg 2.6deg, rgba(255, 255, 255, 0.5) 3deg, rgba(255, 255, 255, 0) 3.4deg 6.1deg);
+  -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 62%, #000 100%);
+  mask-image: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 62%, #000 100%);
+}
+body.reduce-motion #speedlines { display: none; }

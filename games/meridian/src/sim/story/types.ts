@@ -18,6 +18,36 @@ export interface Line {
   bark?: boolean;
   /** Set on the second and later captions of a long line that was split up (internal). */
   continued?: boolean;
+  /** Only said when this is true (so earlier choices and playstyle are acknowledged). */
+  if?: Condition;
+}
+
+export interface ChoiceOption {
+  id: string;
+  /** What the button says. Keep it short; it is also read aloud. */
+  label: string;
+  /** One quiet line under the label, e.g. "Bram will remember this". */
+  hint?: string;
+  /** The option is hidden unless this is true. */
+  requires?: Condition;
+  /** Applied once when picked. */
+  effects?: Effects;
+}
+
+/**
+ * A question put to the player. Picking an option applies its `effects`, remembers the answer and then
+ * raises the story event `"<id>:<option id>"`, so the script's `events` decide what the world does next.
+ */
+export interface ChoiceDef {
+  id: string;
+  prompt: string;
+  /** Who is asking (shown above the prompt). */
+  speaker?: Speaker;
+  options: ChoiceOption[];
+  /** Used when the player runs out of time (only if "Timed choices" is on) and when a chapter is replayed. */
+  defaultOption: string;
+  /** Seconds to answer. Ignored unless the player turned timed choices on. */
+  timeoutSec?: number;
 }
 
 export interface CameraShot {

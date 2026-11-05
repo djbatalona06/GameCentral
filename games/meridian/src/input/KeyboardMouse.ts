@@ -111,13 +111,18 @@ export class KeyboardMouse {
     this.updateMove();
   };
 
-  /** Asks the browser to capture the mouse. Raw (unaccelerated) movement where supported. */
+  /**
+   * Asks the browser to capture the mouse for camera control. With "Raw mouse input" on, the
+   * browser is asked for unaccelerated movement (the same hand movement always turns the camera
+   * the same amount). Browsers that do not support it fall back to a normal lock.
+   */
   requestLock(): void {
     const c = this.canvas as HTMLCanvasElement & { requestPointerLock(opts?: { unadjustedMovement?: boolean }): Promise<void> | void };
     if (!c.requestPointerLock) return;
+    const raw = this.settings().controls.rawMouse;
     try {
-      const r = c.requestPointerLock({ unadjustedMovement: true });
-      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => c.requestPointerLock());
+      const r = c.requestPointerLock(raw ? { unadjustedMovement: true } : undefined);
+      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => (raw ? c.requestPointerLock() : undefined));
     } catch {
       c.requestPointerLock();
     }

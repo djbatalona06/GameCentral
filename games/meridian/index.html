@@ -12,6 +12,8 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
+    <link rel="preload" as="image" href="./backgrounds/key-art-sm.webp" type="image/webp" media="(max-width: 1400px)">
+    <link rel="preload" as="image" href="./backgrounds/key-art.webp" type="image/webp" media="(min-width: 1401px)">
     <link rel="stylesheet" href="./src/styles/base.css">
     <link rel="stylesheet" href="./src/styles/menus.css">
     <link rel="stylesheet" href="./src/styles/hud.css">
@@ -19,6 +21,7 @@
   </head>
   <body>
     <canvas id="game" aria-label="Game view" tabindex="-1"></canvas>
+    <div id="speedlines" aria-hidden="true"></div>
     <div id="hud-root"></div>
     <div id="touch-root"></div>
     <div id="ui-root"></div>

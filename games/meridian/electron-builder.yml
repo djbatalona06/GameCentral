@@ -1,0 +1,43 @@
+# Desktop app packaging (npm run desktop:build). Output goes to desktop-release/.
+# The game is already bundled into dist/ by Vite, so no node_modules are shipped.
+appId: com.gamecentral.meridian
+productName: Meridian
+copyright: An original game from GameCentral
+directories:
+  output: desktop-release
+files:
+  - dist/**/*
+  - desktop/main.cjs
+  - desktop/preload.cjs
+  - package.json
+  - "!node_modules/**/*"
+extraMetadata:
+  main: desktop/main.cjs
+asar: true
+npmRebuild: false
+win:
+  target: [nsis, portable]
+  icon: public/icon-512.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: Meridian-Setup-${version}-windows.${ext}
+portable:
+  artifactName: Meridian-${version}-windows-portable.${ext}
+mac:
+  target:
+    - target: dmg
+      arch: [universal]
+  category: public.app-category.games
+  icon: public/icon-512.png
+  identity: null
+dmg:
+  artifactName: Meridian-${version}-mac.${ext}
+linux:
+  target: [AppImage]
+  syncDesktopName: true
+  category: Game
+  icon: public/icon-512.png
+appImage:
+  artifactName: Meridian-${version}-linux.${ext}
+publish: null

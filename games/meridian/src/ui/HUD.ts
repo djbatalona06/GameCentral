@@ -8,8 +8,8 @@ import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, yawOf, sub } from "../sim/math";
 import type { Speaker } from "../sim/story/types";
 import { readingTime } from "../sim/story/captions";
-import { adaptTip, keyLabel } from "./controlText";
-import type { InputFrame } from "../input/actions";
+import { adaptTip, keyLabel, padName } from "./controlText";
+import type { ButtonAction, InputFrame } from "../input/actions";
 
 const SPEAKER_COLORS: Record<Speaker, string> = {
   Ines: "#7fd1c7",
@@ -24,11 +24,7 @@ const SPEAKER_COLORS: Record<Speaker, string> = {
   Narrator: "#e0e0e0",
 };
 
-const PROMPT_KEYS: Record<InputFrame["device"], Record<"interact" | "melee" | "jump", string>> = {
-  keyboard: { interact: "E", melee: "F", jump: "Space" },
-  gamepad: { interact: "Y", melee: "X", jump: "A" },
-  touch: { interact: "Use", melee: "Melee", jump: "Jump" },
-};
+const TOUCH_LABELS: Record<"interact" | "melee" | "jump", string> = { interact: "Use", melee: "Melee", jump: "Jump" };
 
 export class HUD {
   readonly el: HTMLElement;
@@ -46,6 +42,18 @@ export class HUD {
   private barkTimer = 0;
   private tutorialRaw = "";
   private tutorialDevice: InputFrame["device"] | null = null;
+
+  /** The key or controller button the player has bound to an action, as printed on their device. */
+  private promptKey(device: InputFrame["device"], action: ButtonAction): string {
+    const c = this.settings().controls;
+    if (device === "touch") return TOUCH_LABELS[action as keyof typeof TOUCH_LABELS] ?? action;
+    if (device === "gamepad") {
+      const idx = c.pad[action][0];
+      return idx === undefined ? "?" : padName(idx, c);
+    }
+    const code = c.keys[action][0];
+    return code ? keyLabel(code) : "?";
+  }
 
   constructor(parent: HTMLElement, private settings: () => Settings) {
     const wrap = document.createElement("div");
@@ -280,10 +288,8 @@ export class HUD {
     // Context prompt with the right button name for the current device.
     const pr = this.q("prompt");
     if (sim.prompt && !sim.cutscene) {
-      const action = sim.prompt.action;
-      // Keyboard players see the key they actually bound (remapping included).
-      const bound = device === "keyboard" ? s.controls.keys[action]?.[0] : undefined;
-      const key = bound ? keyLabel(bound) : PROMPT_KEYS[device][action];
+      // The key or button the player actually bound (remapping included), as printed on their device.
+      const key = this.promptKey(device, sim.prompt.action);
       pr.innerHTML = "";
       if (device !== "touch") {
         const k = document.createElement("kbd");

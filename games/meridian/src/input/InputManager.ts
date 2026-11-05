@@ -4,6 +4,7 @@
 
 import type { Settings } from "../core/Settings";
 import { BUTTON_ACTIONS, type ButtonAction, type InputFrame, emptyButtons } from "./actions";
+import { isComputer } from "../platform/desktop";
 
 export interface InputSource {
   /** Which actions are physically held right now. */
@@ -22,7 +23,8 @@ export class InputManager {
   readonly keyboard = newSource();
   readonly gamepad = newSource();
   readonly touch = newSource();
-  device: InputFrame["device"] = "touch";
+  /** Until the player touches anything, guess from the device: computers start with keyboard prompts. */
+  device: InputFrame["device"] = isComputer() ? "keyboard" : "touch";
   /** When false (menus open), gameplay input is ignored. */
   enabled = true;
 
@@ -101,7 +103,7 @@ export class InputManager {
     const aimScale = buttons.aim.held ? s.controls.aimSensitivity : 1;
     return {
       move: { x: mx, y: my },
-      look: { yaw: yaw * s.controls.lookSensitivity * aimScale, pitch: pitch * s.controls.lookSensitivity * aimScale },
+      look: { yaw: yaw * s.controls.lookSensitivity * aimScale, pitch: pitch * s.controls.lookSensitivity * (s.controls.lookYScale ?? 1) * aimScale },
       buttons,
       device: this.device,
     };

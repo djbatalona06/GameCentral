@@ -1,8 +1,10 @@
 // Entry point: start the game and register the offline service worker in production builds.
-// The store apps (Capacitor) already ship every file inside the app, so they skip it.
+// The store apps (Capacitor) and the desktop app (Electron) already ship every file inside the
+// app, so they skip it.
 
 import { Game } from "./core/Game";
 import { isNative } from "./platform/native";
+import { isDesktopApp } from "./platform/desktop";
 
 const game = new Game();
 game.boot().catch((err) => {
@@ -11,7 +13,7 @@ game.boot().catch((err) => {
   if (boot) boot.textContent = "Meridian could not start. Your browser may not support WebGL.";
 });
 
-if ("serviceWorker" in navigator && import.meta.env.PROD && !isNative()) {
+if ("serviceWorker" in navigator && import.meta.env.PROD && !isNative() && !isDesktopApp()) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => undefined);
   });

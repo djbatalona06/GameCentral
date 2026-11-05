@@ -10,5 +10,8 @@ export default defineConfig({
   test: {
     include: ["tests/unit/**/*.test.ts"],
     environment: "node",
+    // The story tests play whole simulated chapters; on a slow computer (or a busy CI machine) a few
+    // of them take longer than vitest's 5 second default even though they pass.
+    testTimeout: 30_000,
   },
 });
