@@ -17,6 +17,8 @@ export type FpsCap = 30 | 60 | 90 | 120 | 144;
 export interface Settings {
   version: 5;
   firstRunDone: boolean;
+  /** Set once the player has opened Quick setup, which hides the "New here?" hint on the main menu. */
+  quickSetupSeen: boolean;
   gameplay: GameplayOptions;
   controls: {
     keys: Record<ButtonAction, string[]>;
@@ -93,6 +95,7 @@ export interface Settings {
 export const defaultSettings = (): Settings => ({
   version: 5,
   firstRunDone: false,
+  quickSetupSeen: false,
   gameplay: defaultGameplay(),
   controls: {
     keys: structuredClone(DEFAULT_KEYS),

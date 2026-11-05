@@ -43,8 +43,8 @@ Writes `public/backgrounds/` (key art, per-chapter 360° panoramas and cards). S
 ## Controls
 | Action | Touch | Keyboard / mouse | Gamepad |
 |---|---|---|---|
-| Move | Left thumb (floating stick, push far to sprint). RUN/WALK switch on the left for slow, quiet sneaking | WASD (Alt = walk) | Left stick |
-| Look | Swipe right side | Mouse (click to lock) | Right stick |
+| Move | Left thumb (floating stick, push far to sprint). RUN/WALK switch on the left for slow, quiet sneaking | WASD or arrow keys (A/D sidestep, Alt = walk, Shift = sprint) | Left stick |
+| Look / turn | Swipe right side | Mouse turns you and your gun (click once to capture the mouse; Esc to let go). Shooter style can be turned off in Settings → Controls | Right stick |
 | Jump / climb | JUMP | Space | A |
 | Cover / roll | COVER | Q | B |
 | Melee / takedown / counter | MELEE | F | X |
@@ -75,8 +75,8 @@ src/audio/            synthesised mixer + reverb spaces, adaptive music, sfx and
 src/ui/               HUD + menus (screens/*.html are plain HTML templates)
 src/styles/           CSS
 src/save/             IndexedDB saves with versioned migrations
-tests/unit/           185 Vitest tests: chapter routes, settings upgrades, controller names, colour contrast, the art pack
-tests/e2e/smoke.mjs   Playwright smoke test: phone in landscape, chapters 1-7, the turn-your-phone prompt
+tests/unit/           266 Vitest tests: chapter routes, story choices, settings upgrades, controller names, colour contrast, the art pack
+tests/e2e/smoke.mjs   Playwright smoke test: phone in landscape, chapters 1-7, the turn-your-phone prompt, desktop mouse and keys
 android/ ios/         Capacitor native projects
 .github/workflows/    (repo root) builds the Android APK and checks the iOS build
 ```

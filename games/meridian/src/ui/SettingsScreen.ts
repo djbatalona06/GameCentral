@@ -3,8 +3,8 @@
 import { ACTION_LABELS, BUTTON_ACTIONS, type ButtonAction } from "../input/actions";
 import { PRESETS, type Settings } from "../core/Settings";
 import { DIFFICULTY_NAMES } from "../sim/GameSim";
-import { buttonName, connectedPadId, keyName, resolveFamily, spokenButtonName, type GlyphFamily } from "../input/glyphs";
 import { isComputer, isFullscreen, setFullscreen } from "../platform/desktop";
+import { keyLabel, padName } from "./controlText";
 
 type Tab = "a11y" | "gameplay" | "controls" | "audio" | "video";
 
@@ -62,6 +62,7 @@ export const OPTIONS: Option[] = [
   { tab: "gameplay", label: "Slow-motion aiming", type: "toggle", get: (s) => s.gameplay.slowMoAim, set: (s, v) => (s.gameplay.slowMoAim = v as boolean) },
   { tab: "gameplay", label: "Traversal assist", desc: "Auto-balance on beams, smart ledge jumps, automatic rope swinging.", type: "toggle", get: (s) => s.gameplay.autoTraversal, set: (s, v) => (s.gameplay.autoTraversal = v as boolean) },
   { tab: "gameplay", label: "Auto pick-up", type: "toggle", get: (s) => s.gameplay.autoPickup, set: (s, v) => (s.gameplay.autoPickup = v as boolean) },
+  { tab: "gameplay", label: "Timed story choices (off: the game always waits for you)", type: "toggle", get: (s) => s.gameplay.timedChoices, set: (s, v) => (s.gameplay.timedChoices = v as boolean) },
   { tab: "gameplay", label: "Offer puzzle skip after", type: "slider", min: 1, max: 6, step: 1, format: (v) => `${v} tries`, get: (s) => s.gameplay.puzzleSkipAfter, set: (s, v) => (s.gameplay.puzzleSkipAfter = v as number) },
   { tab: "gameplay", label: "Camera auto-centre", type: "toggle", get: (s) => s.gameplay.autoRecenter, set: (s, v) => (s.gameplay.autoRecenter = v as boolean) },
 
@@ -71,6 +72,7 @@ export const OPTIONS: Option[] = [
   { tab: "controls", label: "Aim sensitivity", type: "slider", min: 0.2, max: 1.5, step: 0.05, format: x, get: (s) => s.controls.aimSensitivity, set: (s, v) => (s.controls.aimSensitivity = v as number) },
   { tab: "controls", label: "Invert vertical look", type: "toggle", get: (s) => s.gameplay.invertY, set: (s, v) => (s.gameplay.invertY = v as boolean) },
   { tab: "controls", label: "Raw mouse input", desc: "Ignores your computer's pointer acceleration, so aim feels the same at any hand speed.", type: "toggle", get: (s) => s.controls.rawMouse, set: (s, v) => (s.controls.rawMouse = v as boolean) },
+  { tab: "controls", label: "Mouse turns the hero (shooter style)", desc: "Keyboard and mouse: you always face where the mouse points and A/D sidestep. Off: you face the way you walk.", type: "toggle", get: (s) => s.gameplay.desktopStyle === "shooter", set: (s, v) => (s.gameplay.desktopStyle = v ? "shooter" : "adventure") },
   { tab: "controls", section: "Controller", label: "Button names", desc: "Auto reads them from your controller.", type: "select", options: [{ value: "auto", label: "Auto" }, { value: "xbox", label: "Xbox (A B X Y)" }, { value: "playstation", label: "PlayStation (✕ ○ □ △)" }, { value: "switch", label: "Nintendo Switch (B A Y X)" }], get: (s) => s.controls.glyphs, set: (s, v) => (s.controls.glyphs = v as Settings["controls"]["glyphs"]) },
   { tab: "controls", label: "Stick deadzone", desc: "Raise it if the camera drifts on its own; lower it for finer control.", type: "slider", min: 0.05, max: 0.35, step: 0.01, format: pct, get: (s) => s.controls.stickDeadzone, set: (s, v) => (s.controls.stickDeadzone = v as number) },
   { tab: "controls", label: "Gyro aiming", desc: "Tilt your phone to fine-tune aim while aiming.", type: "toggle", get: (s) => s.controls.gyroAim, set: (s, v) => (s.controls.gyroAim = v as boolean) },
@@ -91,6 +93,7 @@ export const OPTIONS: Option[] = [
   { tab: "audio", label: "Mono audio", desc: "Plays everything in both ears.", type: "toggle", get: (s) => s.audio.mono, set: (s, v) => (s.audio.mono = v as boolean) },
   { tab: "audio", label: "Lower music during dialogue", type: "toggle", get: (s) => s.audio.duck, set: (s, v) => (s.audio.duck = v as boolean) },
   { tab: "audio", label: "Night mode", desc: "Evens out loud and quiet sounds so you can play at low volume.", type: "toggle", get: (s) => s.audio.nightMode, set: (s, v) => (s.audio.nightMode = v as boolean) },
+  { tab: "audio", label: "Character chatter", desc: "Short extra lines from Ines and Bram while you explore.", type: "toggle", get: (s) => s.gameplay.chatter, set: (s, v) => (s.gameplay.chatter = v as boolean) },
 
   // Video
   { tab: "video", section: "Display", label: "Full screen", desc: "Also F11 on a computer.", type: "toggle", when: isComputer, get: () => isFullscreen(), set: (_s, v) => setFullscreen(v as boolean) },
@@ -217,7 +220,7 @@ export function renderSettingsTab(panel: HTMLElement, tab: Tab, hooks: SettingsS
       for (const dev of ["keys", "pad"] as const) {
         const b = document.createElement("button");
         b.className = "binding";
-        const current = dev === "keys" ? s.controls.keys[a].map(keyName).join(" / ") : s.controls.pad[a].map((i) => padName(i, s)).join(" / ");
+        const current = dev === "keys" ? s.controls.keys[a].map(keyLabel).join(" / ") : s.controls.pad[a].map((i) => padName(i, s.controls)).join(" / ");
         b.textContent = current || "Unbound";
         b.setAttribute("aria-label", `${ACTION_LABELS[a]} ${dev === "keys" ? "keyboard" : "controller"}: ${current}. Press to change.`);
         b.addEventListener("click", () => {
@@ -232,8 +235,4 @@ export function renderSettingsTab(panel: HTMLElement, tab: Tab, hooks: SettingsS
   }
 }
 
-const family = (s?: Settings): GlyphFamily => resolveFamily(s?.controls.glyphs ?? "auto", connectedPadId());
-/** The name printed on the player's controller for a standard button number. */
-export const padName = (i: number, s?: Settings) => buttonName(i, family(s));
-/** The same name in words, for narration and screen readers ("Cross", not a symbol). */
-export const padSpoken = (i: number, s?: Settings) => spokenButtonName(i, family(s));
+export { padName, padSpoken } from "./controlText";

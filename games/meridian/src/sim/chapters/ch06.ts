@@ -157,7 +157,10 @@ export const ch06Script: ChapterScript = {
         type: "cutscene",
         shots: [{ from: { x: 2, y: 3.4, z: 121 }, to: { x: -1, y: 3, z: 124 }, target: { x: 0, y: 2.6, z: 138 }, duration: 4 }],
         lines: [
-          { speaker: "Kessa", text: "You rang a bell and buried a monastery. Varek was almost impressed." },
+          { speaker: "Kessa", text: "You let me live. Don't think that buys you anything.", if: { flag: "kessa.spared" } },
+          { speaker: "Kessa", text: "You took my radio. I want it back.", if: { flag: "kessa.bound" } },
+          { speaker: "Kessa", text: "You rang a bell and buried a monastery. Varek was almost impressed.", if: { not: { flag: "bells.muffled" } } },
+          { speaker: "Kessa", text: "You tiptoed through a monastery and it fell on you anyway. Varek was almost impressed.", if: { flag: "bells.muffled" } },
           { speaker: "Ines", text: "Hand over the chart case, Kessa. There's nowhere to go." },
           { speaker: "Kessa", text: "It's a train. There's only forward." },
         ],

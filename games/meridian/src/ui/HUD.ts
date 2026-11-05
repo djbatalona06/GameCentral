@@ -7,17 +7,18 @@ import { WEAPONS, currentSpread } from "../sim/combat/weapons";
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, yawOf, sub } from "../sim/math";
 import type { Speaker } from "../sim/story/types";
-import type { InputFrame } from "../input/actions";
-import { buttonName, connectedPadId, keyName, resolveFamily } from "../input/glyphs";
-import { adaptHint } from "./hints";
-import { isComputer } from "../platform/desktop";
-import type { ButtonAction } from "../input/actions";
+import { readingTime } from "../sim/story/captions";
+import { adaptTip, keyLabel, padName } from "./controlText";
+import type { ButtonAction, InputFrame } from "../input/actions";
 
 const SPEAKER_COLORS: Record<Speaker, string> = {
   Ines: "#7fd1c7",
   Bram: "#f2c94c",
   Varek: "#ff8a80",
   Kessa: "#ffab40",
+  Catalina: "#d7b8ff",
+  Vendor: "#a5d6a7",
+  Caravaneer: "#ffe082",
   "Gilt Radio": "#c5cae9",
   Mercenary: "#ef9a9a",
   Narrator: "#e0e0e0",
@@ -36,10 +37,11 @@ export class HUD {
   private damageEls: Array<{ el: HTMLElement; t: number; yaw: number }> = [];
   private soundEls: Array<{ el: HTMLElement; t: number; yaw: number }> = [];
   onSkip: (() => void) | null = null;
+  /** Reads a line aloud (the whole line once, even when it is shown as several captions). */
   speak: ((text: string, speaker: Speaker) => void) | null = null;
-
-  /** The device that produced the latest input (tutorial hints are worded for it). */
-  private device: InputFrame["device"] = isComputer() ? "keyboard" : "touch";
+  private barkTimer = 0;
+  private tutorialRaw = "";
+  private tutorialDevice: InputFrame["device"] | null = null;
 
   /** The key or controller button the player has bound to an action, as printed on their device. */
   private promptKey(device: InputFrame["device"], action: ButtonAction): string {
@@ -47,10 +49,10 @@ export class HUD {
     if (device === "touch") return TOUCH_LABELS[action as keyof typeof TOUCH_LABELS] ?? action;
     if (device === "gamepad") {
       const idx = c.pad[action][0];
-      return idx === undefined ? "?" : buttonName(idx, resolveFamily(c.glyphs, connectedPadId()));
+      return idx === undefined ? "?" : padName(idx, c);
     }
     const code = c.keys[action][0];
-    return code ? keyName(code) : "?";
+    return code ? keyLabel(code) : "?";
   }
 
   constructor(parent: HTMLElement, private settings: () => Settings) {
@@ -82,10 +84,12 @@ export class HUD {
     switch (ev.type) {
       case "dialogue": {
         if (!a.subtitles && !a.voiceLines) break;
-        const box = this.q("subtitles");
+        // Shouts go in their own small line, so they never wipe a story subtitle.
+        const bark = !!ev.line.bark;
+        const box = this.q(bark ? "bark" : "subtitles");
         box.innerHTML = "";
         if (a.subtitles) {
-          const p = document.createElement("p");
+          const p = document.createElement(bark ? "span" : "p");
           if (a.speakerNames) {
             const sp = document.createElement("span");
             sp.className = "speaker";
@@ -95,9 +99,12 @@ export class HUD {
           }
           p.appendChild(document.createTextNode(ev.line.text));
           box.appendChild(p);
+          box.classList.add("show");
         }
-        this.subtitleTimer = ev.line.duration ?? Math.max(2.2, ev.line.text.split(" ").length * 0.32 + 0.8);
-        if (a.voiceLines) this.speak?.(ev.line.text, ev.line.speaker);
+        const time = ev.line.duration ?? readingTime(ev.line.text);
+        if (bark) this.barkTimer = time;
+        else this.subtitleTimer = time;
+        if (a.voiceLines && ev.say) this.speak?.(ev.say, ev.line.speaker);
         break;
       }
       case "objective":
@@ -105,7 +112,8 @@ export class HUD {
         break;
       case "tutorial":
         if (!a.tutorialHints) break;
-        this.q("tutorial").textContent = adaptHint(ev.text, this.device, (act) => this.promptKey(this.device, act));
+        this.tutorialRaw = ev.text;
+        this.tutorialDevice = null; // worded for the current device on the next update
         this.q("tutorial").classList.add("show");
         this.tutorialTimer = Math.max(5, ev.text.split(" ").length * 0.35);
         break;
@@ -208,7 +216,6 @@ export class HUD {
   }
 
   update(dt: number, sim: GameSim, device: InputFrame["device"], fps: number): void {
-    this.device = device;
     const s = this.settings();
     const p = sim.player;
     const timers: Array<[number, string]> = [
@@ -219,10 +226,18 @@ export class HUD {
       [(this.warningTimer -= dt), "warning"],
       [(this.bellTimer -= dt), "bell"],
     ];
-    for (const [t, role] of timers) {
+    this.barkTimer -= dt;
+    for (const [t, role] of [...timers, [this.barkTimer, "bark"] as [number, string]]) {
       if (t > 0) continue;
-      if (role === "subtitles") this.q(role).innerHTML = "";
-      else this.q(role).classList.remove("show");
+      const el = this.q(role);
+      el.classList.remove("show");
+      // Captions fade out first, then free their space in the stack.
+      if ((role === "subtitles" || role === "bark") && t < -0.3 && el.firstChild) el.innerHTML = "";
+    }
+    // Tips use the right words for the device ("press Space" on a keyboard, "press A" on a pad).
+    if (this.tutorialRaw && this.tutorialDevice !== device) {
+      this.tutorialDevice = device;
+      this.q("tutorial").textContent = adaptTip(this.tutorialRaw, device, s.controls);
     }
     const subs = this.q("subtitles");
     subs.dataset.size = s.a11y.subtitleSize;
@@ -273,6 +288,7 @@ export class HUD {
     // Context prompt with the right button name for the current device.
     const pr = this.q("prompt");
     if (sim.prompt && !sim.cutscene) {
+      // The key or button the player actually bound (remapping included), as printed on their device.
       const key = this.promptKey(device, sim.prompt.action);
       pr.innerHTML = "";
       if (device !== "touch") {
@@ -334,8 +350,20 @@ export class HUD {
     if (s.video.showFps) f.textContent = `${fps.toFixed(0)} fps`;
   }
 
+  /** Desktop only: "Click to look around" while the mouse is not captured. */
+  setClickToLook(on: boolean): void {
+    this.q("click-to-look").classList.toggle("show", on);
+  }
+
   reset(): void {
     this.q("subtitles").innerHTML = "";
+    this.q("bark").innerHTML = "";
+    this.q("subtitles").classList.remove("show");
+    this.q("bark").classList.remove("show");
+    this.subtitleTimer = 0;
+    this.barkTimer = 0;
+    this.tutorialRaw = "";
+    this.tutorialDevice = null;
     this.q("toasts").innerHTML = "";
     this.q("damage").innerHTML = "";
     this.q("sounds").innerHTML = "";

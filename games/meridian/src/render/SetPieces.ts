@@ -221,7 +221,8 @@ export class Scrolling {
 
 // ------------------------------------------------------------------ weather particles
 
-function flakeTexture(scene: Scene): DynamicTexture {
+/** A soft round dot, used for weather, dust, fireflies and effect particles. */
+export function flakeTexture(scene: Scene): DynamicTexture {
   const t = new DynamicTexture("flake", { width: 32, height: 32 }, scene, false);
   const ctx = t.getContext() as CanvasRenderingContext2D;
   const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);

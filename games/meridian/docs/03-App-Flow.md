@@ -3,8 +3,7 @@
 ## Screen map
 ```
 Boot
- └─ First launch only: Accessibility setup (text size, subtitles, narration, presets)
-     └─ Title ("Tap to start", unlocks audio)
+ └─ Title (home screen, every launch: "Tap to start" on phones, "Click or press any key" on computers; unlocks audio)
          └─ Main menu
              ├─ Continue ───────────────┐
              ├─ New game → Slot → Difficulty ─┤
@@ -12,15 +11,24 @@ Boot
              ├─ Chapter select ─────────┤ (completed + current chapters)
              ├─ Settings (tabs: Accessibility, Gameplay, Controls, Audio, Video)
              │    └─ Controls → Move touch buttons (layout editor)
+             ├─ Quick setup (text size, subtitles, narration, presets; a hint suggests it until opened once)
              └─ Credits
                                         ▼
                                    Playing (HUD + touch controls)
                                     ├─ Pause → Resume · Skip puzzle* · Journal · Settings · Restart checkpoint · Save & quit
                                     ├─ Cutscene (letterbox, Skip button)
+                                    ├─ Story question (world waits; pick an answer) → back to Playing
                                     ├─ Death → Retry · Retry easier · Quit
-                                    └─ Chapter complete → Results (stats, medals) → Next chapter · Replay · Menu
+                                    └─ Chapter complete → Results (stats, medals, "Because of you") → Quiet moment (optional talk) → Next chapter · Replay · Menu
 ```
 *Skip puzzle appears only when the player has struggled (assist setting).
+
+## Story questions and quiet moments
+- A question opens only when nothing else is competing for the player: dialogue has finished, no cutscene is running and no fight is on. The world freezes while it is open.
+- Answers: tap or click, keys 1 to 4, or the gamepad D-pad and A. There is no Back; the player may take as long as they like. With "Timed story choices" on (off by default) each question has a countdown and picks its quiet default.
+- A chapter never ends in the middle of a question or while someone is still speaking.
+- After results, a "quiet moment" offers up to three short talks (only one can be taken). Skipping is always possible.
+- Replaying a finished chapter keeps the first answers; nothing is counted twice.
 
 ## Navigation rules
 | Input | Move | Select | Back |

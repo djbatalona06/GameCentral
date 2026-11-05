@@ -52,6 +52,8 @@ import { createWaterMaterial } from "./WaterShader";
 import { Figure, OUTFITS, outfitFor, type Anim, type FigureLook, type Outfit } from "./Figure";
 import { bellMesh, jeepMesh } from "./meshUtil";
 import { Hazards, Scrolling, Searchlights, Weather } from "./SetPieces";
+import { Ambient } from "./Ambient";
+import { Juice } from "./Juice";
 import { AssetSwap } from "./assets/AssetLibrary";
 
 const v = (p: V3) => new Vector3(p.x, p.y, p.z);
@@ -129,6 +131,8 @@ export class SceneRenderer {
   private hazards: Hazards | null = null;
   private scrolling: Scrolling | null = null;
   private weather: Weather | null = null;
+  private ambient: Ambient | null = null;
+  private juice: Juice | null = null;
   private baseFog = 0;
   /** Dust takes the colour of the level's ground light. */
   private dustColor = new Color3(0.6, 0.55, 0.48);
@@ -299,6 +303,13 @@ export class SceneRenderer {
     const ines = hc ? { ...OUTFITS.ines, top: PALETTE.playerHigh, bottom: PALETTE.playerHigh } : OUTFITS.ines;
     this.player = this.makeFigure("player", ines, 1.8, true);
     this.buildActOneVisuals(swap);
+    const reduceMotion = this.settings().a11y.reduceMotion;
+    this.ambient = new Ambient(scene, sim, { night, particles: tier.particles, reduceMotion });
+    this.juice = new Juice(scene, tier.shadows !== "blob");
+    this.ambient.onSplash = (at) => {
+      this.juice?.ring(at);
+      this.juice?.burst("splash", at, 6);
+    };
     this.applyAccessibility();
     this.revision = sim.world.revision;
     void swap.apply(scene);
@@ -647,6 +658,8 @@ export class SceneRenderer {
     this.syncProps(dt);
     this.syncSetPieces(dt);
     this.syncFx(dt);
+    this.ambient?.update(dt, sim, this.camera.position);
+    this.juice?.update(dt, sim.player.sprinting, this.settings().a11y.reduceMotion);
     this.syncCamera(dt);
     const t0 = performance.now();
     // beginFrame/endFrame keep Babylon's clock (engine.getDeltaTime, used by the water) ticking,
@@ -1076,34 +1089,48 @@ export class SceneRenderer {
     (m.material as StandardMaterial).emissiveColor = new Color3(0.85, 0.93, 0.95);
   }
 
-  /** Visual reactions to the player's own movement: landings, rolls, sprint steps, splashes. */
+  /**
+   * Visual reactions to the player's own movement: the hero's knees and trails, dust on landings
+   * and rolls, and rings and spray in water. Everything that moves obeys "Motion effects" and
+   * "Reduce motion" (see effects()).
+   */
   private playerMoved(type: string, pos: V3): void {
     const f = this.player;
-    if (!f) return;
-    const trails = this.effects().trails;
+    const fx = this.effects();
+    const wet = !!this.sim?.player.inWater;
     switch (type) {
       case "land":
-        f.landed(0.45);
-        this.dust(pos, 0.8, 3);
+        f?.landed(0.45);
+        if (!wet) this.dust(pos, 0.8, 3);
         break;
       case "hardLand":
-        f.landed(1);
-        this.dust(pos, 1.3, 6);
+        f?.landed(1);
+        if (!wet) this.dust(pos, 1.3, 6);
+        this.juice?.hardLanding(); // the camera dips (Juice turns this off for Reduce motion)
         break;
       case "sprintStep":
-        this.dust(pos, 0.45, 1);
+        if (wet) {
+          if (fx.dust > 0) this.juice?.ring(pos);
+        } else this.dust(pos, 0.45, 1);
+        break;
+      case "step":
+        if (wet && fx.dust > 0) this.juice?.ring(pos);
         break;
       case "roll":
-        if (trails) f.showTrail(0.5);
-        this.dust(pos, 0.6, 2);
+        if (fx.trails) f?.showTrail(0.5);
+        if (!wet) this.dust(pos, 0.6, 2);
+        break;
+      case "wallJump":
+        if (fx.trails) f?.showTrail(0.3);
+        if (!wet) this.dust(pos, 0.6, 2);
         break;
       case "zip":
-      case "wallJump":
       case "ledgeHop":
-        if (trails) f.showTrail(0.3);
+        if (fx.trails) f?.showTrail(0.3);
         break;
       case "splash":
         this.splash(pos);
+        if (fx.dust > 0) this.juice?.burst("splash", pos, 18);
         break;
     }
   }
@@ -1156,6 +1183,13 @@ export class SceneRenderer {
         sp.position = to;
         sp.scaling.setAll(0.12);
         (sp.material as StandardMaterial).emissiveColor = ev.hit ? new Color3(1, 0.2, 0.15) : new Color3(0.9, 0.9, 0.7);
+        this.juice?.muzzleFlash(ev.from);
+      }
+      // Bullets kick up sparks and dust where they land, or a dark puff when they hit someone.
+      if (ev.hit) this.juice?.burst("hit", ev.to, 10);
+      else {
+        this.juice?.burst("spark", ev.to, ev.byPlayer ? 10 : 6);
+        this.juice?.burst("dust", ev.to, 3);
       }
     } else if (ev.type === "player") {
       this.playerMoved(ev.ev.type, ev.ev.pos);
@@ -1165,6 +1199,10 @@ export class SceneRenderer {
       const e = this.spawnFx("explosion", 0.45);
       e.position = v(ev.pos);
       (e.material as StandardMaterial).emissiveColor = new Color3(1, 0.55, 0.15);
+      this.juice?.burst("dust", ev.pos, 24);
+      this.juice?.burst("spark", ev.pos, 24);
+    } else if (ev.type === "boxBroken") {
+      this.juice?.burst("dust", ev.pos, 16);
     } else if (ev.type === "shake") {
       this.shake = Math.max(this.shake, ev.amount);
     } else if (ev.type === "playerHurt") {
@@ -1234,10 +1272,12 @@ export class SceneRenderer {
       return;
     }
     const cp = sim.cam.position;
-    cam.position.set(cp.x + jx, cp.y + jy, cp.z);
+    const dip = this.juice?.dip ?? 0;
+    cam.position.set(cp.x + jx, cp.y + jy - dip * 0.35, cp.z);
     const dir = lookDir(sim.cam.yaw, sim.cam.pitch);
     cam.setTarget(this.tmpB.set(cam.position.x + dir.x, cam.position.y + dir.y, cam.position.z + dir.z));
-    cam.fov = fovForAspect(sim.cam.fov, this.engine.getAspectRatio(cam));
+    // A slightly wider view while sprinting gives a sense of speed (off with Reduce motion).
+    cam.fov = fovForAspect(sim.cam.fov * (sim.aiming ? 1 : (this.juice?.fovMul ?? 1)), this.engine.getAspectRatio(cam));
   }
 
   // ------------------------------------------------------------------ settings & cleanup
@@ -1287,6 +1327,8 @@ export class SceneRenderer {
     this.hazards = null;
     this.scrolling = null;
     this.weather = null;
+    this.ambient = null;
+    this.juice = null;
     this.projectileMeshes = [];
     this.arcDots = [];
     this.fx = [];

@@ -22,6 +22,15 @@ export interface ButtonDef {
   looks?: boolean;
 }
 
+/**
+ * Decides whether a device is touch-first: a coarse pointer (finger) and no fine pointer (mouse or
+ * trackpad) anywhere. `media` answers CSS media queries; without it, fall back to touch points.
+ */
+export function isTouchFirst(media: ((query: string) => boolean) | null, maxTouchPoints: number): boolean {
+  if (!media) return maxTouchPoints > 0;
+  return media("(pointer: coarse)") && !media("(any-pointer: fine)");
+}
+
 /** Width and height of a widget in px for the given button-size setting. */
 export const dims = (d: ButtonDef, scale: number) => ({ w: (d.w ?? d.size) * scale, h: (d.h ?? d.size) * scale });
 
@@ -132,6 +141,8 @@ export class TouchControls {
   private gunKey = "";
   private goalKey = "";
   onLayoutChanged: (() => void) | null = null;
+  /** Called when a finger touches the screen. */
+  onTouchUsed: (() => void) | null = null;
 
   constructor(private src: InputSource, private settings: () => Settings, parent: HTMLElement) {
     this.root = document.createElement("div");
@@ -159,6 +170,10 @@ export class TouchControls {
       this.buttons.set(def.id, b);
     }
     parent.appendChild(this.root);
+    // A finger on the screen (even on a touchscreen laptop) switches to touch controls.
+    window.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch") this.onTouchUsed?.();
+    }, { capture: true, passive: true });
     this.root.addEventListener("pointerdown", this.onDown);
     this.root.addEventListener("pointermove", this.onMove);
     this.root.addEventListener("pointerup", this.onUp);
@@ -169,9 +184,12 @@ export class TouchControls {
     window.addEventListener("resize", () => this.applyLayout());
   }
 
-  /** True on phones and tablets (or when the player has used touch). */
+  /**
+   * True on phones and tablets. A laptop with a touchscreen also reports touch support, but it has
+   * a mouse or trackpad too, so it starts in desktop mode (the game switches live if you touch it).
+   */
   static isTouchDevice(): boolean {
-    return "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    return isTouchFirst(typeof window.matchMedia === "function" ? (q) => window.matchMedia(q).matches : null, navigator.maxTouchPoints ?? 0);
   }
 
   show(on: boolean): void {

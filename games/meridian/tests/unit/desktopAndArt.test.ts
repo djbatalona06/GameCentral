@@ -7,7 +7,7 @@ import { buttonName, detectFamily, keyName, resolveFamily, spokenButtonName } fr
 import { deadzone } from "../../src/input/GamepadInput";
 import { autoTier } from "../../src/render/Quality";
 import { CHAPTERS } from "../../src/sim/chapters/registry";
-import { adaptHint } from "../../src/ui/hints";
+import { adaptTip } from "../../src/ui/controlText";
 import type { KeyValueStore } from "../../src/save/storage";
 
 const memoryStore = (data: Record<string, unknown>): KeyValueStore => ({
@@ -123,16 +123,20 @@ describe("Blender background pack", () => {
 });
 
 describe("tutorial hints follow the device", () => {
-  const keys = (a: string) => ({ jump: "Space", interact: "E", sprint: "Shift" })[a] ?? "?";
+  const controls = defaultSettings().controls;
+  const hint = "Move with the left stick. Swipe the right side of the screen to look around.";
   it("leaves touch hints as written", () => {
-    expect(adaptHint("Move with the left stick. Swipe the right side of the screen to look around.", "touch", keys)).toContain("Swipe");
+    expect(adaptTip(hint, "touch", controls)).toContain("Swipe");
   });
-  it("rewrites touch-only phrases and adds the bound key on a keyboard", () => {
-    expect(adaptHint("Move with the left stick. Swipe the right side of the screen to look around.", "keyboard", keys)).toContain("W A S D");
-    expect(adaptHint("Stand on the tower platform and press Interact to ride the zipline.", "keyboard", keys)).toContain("press Interact (E)");
-    expect(adaptHint("Hold Sprint for a boost.", "keyboard", keys)).toBe("Hold Sprint (Shift) for a boost.");
+  it("rewrites touch-only phrases and names the bound key on a keyboard", () => {
+    expect(adaptTip(hint, "keyboard", controls)).toContain("WASD");
+    expect(adaptTip("Stand on the tower platform and press Interact to ride the zipline.", "keyboard", controls)).toContain("press E");
+    expect(adaptTip("Hold Sprint for a boost.", "keyboard", controls)).toBe("Hold Shift for a boost.");
+    expect(adaptTip("Run and jump to catch the rope. Push forward to swing.", "keyboard", controls)).toContain("Hold W to swing");
   });
-  it("talks about the right stick on a controller", () => {
-    expect(adaptHint("Move with the left stick. Swipe the right side of the screen to look around.", "gamepad", () => "A")).toContain("right stick");
+  it("talks about the right stick and shows the controller's own button names", () => {
+    expect(adaptTip(hint, "gamepad", controls)).toContain("right stick");
+    const ps = { ...controls, glyphs: "playstation" as const };
+    expect(adaptTip("Press Jump next to a handhold.", "gamepad", ps)).toBe("Press ✕ next to a handhold.");
   });
 });

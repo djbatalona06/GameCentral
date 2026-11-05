@@ -34,15 +34,18 @@ Grounded, sun-baked realism without image files: physically based materials pain
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ OBJECTIVE ▌ Reach the shipwreck      [GOAL]  Harbor 9 15/45 [II]│
-│ Tutorial card (left half)                                  │
+│        Top stack: warning · meters · tip · hint · toasts │
 │                         reticle + threat arrows           │
-│ Subtitles (left half)                     [THROW] [RELOAD]│
+│   Bottom stack: prompt · shout · subtitles [THROW] [RELOAD]│
 │                                    [USE]  [FIRE]  [COVER] │
 │  (floating stick)                 [AIM] [MELEE]   [JUMP]  │
 └──────────────────────────────────────────────────────────┘
 ```
 - Everything respects the safe area (notches, rounded corners).
-- With touch controls on, subtitles and tutorials sit in the half of the screen without buttons. With the left-handed layout, they mirror.
+- Messages live in two **stacks** so they line up instead of overlapping: the **top stack** (warnings, Spotted/Jeep meters, bell notes, tips, hints, toasts) and the **bottom stack** (balance bar, button prompt, shouts, subtitles). On a computer the top stack sits under the objective/ammo row; on touch both stacks sit in the free middle area between the left cards and the right buttons, and mirror for the left-handed layout.
+- **Subtitles** are at most about two lines: the game splits long lines into short captions (64 characters each) shown one after another. **Shouts** ("Grenade out!") and character chatter appear in a small line of their own, so they never replace a story subtitle.
+- **Tips use the player's device words**: "press Space" on a keyboard, "press A" on a controller, "press Jump" on touch, and never "swipe the screen" on a computer. Remapped keys show their new name.
+- On a computer, "Click to look around" shows while the mouse is not captured.
 - The reticle grows with weapon spread, turns red over an enemy, and shows an X hit marker (red for a kill).
 - Red vignette = low health. Arcs = direction of damage. Labels on a ring = sounds (when sound indicators are on).
 - A slim bar under the top HUD shows the **Spotted** meter (searchlights) or the **Jeep** condition, only when relevant.
@@ -57,8 +60,9 @@ The game is **landscape only**: the HUD and touch layouts are designed for a wid
 - Size (0.7–1.6×), opacity and position are adjustable. There are two-thumb, one-hand-right and one-hand-left layouts.
 
 ## Motion
-- Menu transitions: 0.2 s fade. Toasts slide in.
-- "Reduce motion" removes UI animation and cuts camera shake by 80%.
+- Menu screens glide in; menu buttons arrive one after another; buttons lift and glow on hover/focus. The title compass turns slowly, its needle hunts for north, and the logo shimmers. The home and main menu let the slowly orbiting beach show through.
+- In play: birds circle overhead (gulls by the sea), fish swim and leap in the water, dust motes (fireflies at night) drift by; bullets kick up sparks and dust; feet puff dust on landings, rolls and sprints; water splashes ring outwards; the view widens a touch while sprinting and dips on a hard landing; a knockout freezes the action for a blink.
+- "Reduce motion" removes UI animation, the sprint/landing camera moves, the knockout freeze and the drifting motes, halves the wildlife, and cuts camera shake by 80%.
 
 ## Writing style
 Short, plain sentences. Tutorials say what to press and why ("Crouch in tall grass to hide."). Dialogue is warm and a little funny.
