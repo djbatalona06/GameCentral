@@ -810,10 +810,10 @@ def ch05(sc, mats, rng, pal):
 
 def ch06(sc, mats, rng, pal):
     """Night Train to Varanask: dark pine mountains, a stone viaduct and a lit train."""
-    bumps = [(rng.uniform(-180, 180), rng.uniform(1500, 5000), rng.uniform(500, 900), rng.uniform(500, 900), None) for _ in range(10)]
+    bumps = [(rng.uniform(-180, 180), rng.uniform(1500, 5000), rng.uniform(500, 900), rng.uniform(300, 550), None) for _ in range(10)]
     # (The old close "valley side" hills are gone: the line runs across open high country now,
     # so the view from the train is wide rather than a gorge.)
-    t = Terrain(66, 900, scale=0.0007, ridged=True, base=-60.0, bumps=bumps, shore=0.25)
+    t = Terrain(66, 650, scale=0.0007, ridged=True, base=-60.0, bumps=bumps, shore=0.25)
     t.build(sc, mats.terrain("night-mtn", "#2b3528", "#4a4d55", snow_hex="#c5cedb", snow_from=650, slope_rock="#3d4048"), 150, 12000)
     trees(sc, mats, t, rng, 3800, (-180, 180), (160, 2400), "#162019", size=(14, 26), kind="pine", min_z=-55, max_z=560)
     via = Batch()
