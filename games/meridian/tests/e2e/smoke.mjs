@@ -108,7 +108,26 @@ try {
   await page.locator(".tc-jump").dispatchEvent("pointerup", { pointerId: 9, pointerType: "touch", bubbles: true });
   check("jump button jumps", jumped, `vy=${vy.toFixed(2)}`);
 
-  // 5b. Open maps and loot: the edge warns, a crate opens, a camp opens its screen.
+  // 6. Checkpoint autosave and Continue after reload.
+  await game(() => {
+    const s = window.__meridian.sim;
+    s.player.teleport({ x: 0, y: 3, z: 55 }, 0);
+    s.forceCheckpoint("c2");
+  });
+  await page.waitForTimeout(1200);
+  await shot("06-ch01-wreck");
+  await page.reload();
+  await page.waitForSelector('[data-screen="title"]', { timeout: 30000 });
+  await click('[data-action="start"]');
+  await page.waitForSelector('[data-screen="main-menu"]');
+  const contEnabled = await page.locator('[data-action="continue"]').isEnabled();
+  check("Continue is available after reload", contEnabled);
+  await click('[data-action="continue"]');
+  await page.waitForFunction(() => window.__meridian?.sim, null, { timeout: 30000 });
+  const restored = await game(() => ({ cp: window.__meridian.sim.checkpointId, z: window.__meridian.sim.player.pos.z }));
+  check("Continue restores the checkpoint", restored.cp === "c2" && Math.abs(restored.z - 55) < 1, JSON.stringify(restored));
+
+  // 6b. Open maps and loot: the edge warns, a crate opens, a camp opens its screen.
   const tapUse = async () => {
     await page.locator(".tc-interact").dispatchEvent("pointerdown", { pointerId: 11, pointerType: "touch", bubbles: true });
     await page.waitForTimeout(250);
@@ -141,24 +160,6 @@ try {
   }
   check("leaving camp goes back to play", await game(() => window.__meridian.sim.camp === null));
 
-  // 6. Checkpoint autosave and Continue after reload.
-  await game(() => {
-    const s = window.__meridian.sim;
-    s.player.teleport({ x: 0, y: 3, z: 55 }, 0);
-    s.forceCheckpoint("c2");
-  });
-  await page.waitForTimeout(1200);
-  await shot("06-ch01-wreck");
-  await page.reload();
-  await page.waitForSelector('[data-screen="title"]', { timeout: 30000 });
-  await click('[data-action="start"]');
-  await page.waitForSelector('[data-screen="main-menu"]');
-  const contEnabled = await page.locator('[data-action="continue"]').isEnabled();
-  check("Continue is available after reload", contEnabled);
-  await click('[data-action="continue"]');
-  await page.waitForFunction(() => window.__meridian?.sim, null, { timeout: 30000 });
-  const restored = await game(() => ({ cp: window.__meridian.sim.checkpointId, z: window.__meridian.sim.player.pos.z }));
-  check("Continue restores the checkpoint", restored.cp === "c2" && Math.abs(restored.z - 55) < 1, JSON.stringify(restored));
 
   // 7. Pause menu, settings, accessibility toggles.
   await page.locator(".tc-pause").dispatchEvent("pointerdown", { pointerId: 11, pointerType: "touch", bubbles: true });
@@ -392,17 +393,23 @@ try {
   await page.locator('[data-option="refuse"]').tap();
   await page.waitForTimeout(400);
   check("story: tapping an answer is remembered and play resumes", await game(() => window.__meridian.sim.story.choices.varek_offer === "refuse" && window.__meridian.state === "playing"));
-  // Portrait layout of a question.
-  await page.setViewportSize({ width: 390, height: 844 });
-  await game(() => window.__meridian.sim.fireEvent("reach_boat"));
+  // A second question on the landscape phone screen. (The game is landscape-only: held upright
+  // it pauses behind the "turn your phone" prompt, so questions are only ever shown in landscape.)
+  await game(() => {
+    // The question waits for the lines before it. The software renderer runs the game slower
+    // than real time, so let those lines go and test the question itself.
+    const s = window.__meridian.sim;
+    s.fireEvent("reach_boat");
+    s.dialogueQueue.length = 0;
+    s.dialogueTimer = 0;
+  });
   await page.waitForSelector('[data-screen="choice"]', { timeout: 30000 });
-  await shot("story-choice-portrait");
+  await shot("story-choice-landscape");
   const fits = await page.evaluate(() => [...document.querySelectorAll("[data-option]")].every((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; }));
-  check("story: portrait question fits on a phone screen", fits);
+  check("story: the question fits on a landscape phone screen", fits);
   await page.keyboard.press("1");
   await page.waitForTimeout(300);
   check("story: the 1 key picks the first answer", await game(() => window.__meridian.sim.story.choices.rubbing === "show"));
-  await page.setViewportSize({ width: 844, height: 390 });
   await game(() => window.__meridian.showJournal());
   await page.waitForSelector('[data-screen="journal"]');
   check("story: the journal has a People page with Bram", (await page.locator('[data-role="people"] li').allTextContents()).join(" ").includes("Bram Okafor"));
@@ -469,7 +476,9 @@ try {
       await dp.waitForTimeout(30);
     }
     await dp.waitForFunction((c) => window.__meridian.sim.cam.yaw > c + 0.3, cam0, { timeout: 5000 }).catch(() => undefined);
-    await dp.waitForTimeout(400);
+    // The hero turns to face the camera over a few ticks; the software renderer runs the game
+    // slower than real time, so wait for her to line up rather than a fixed pause.
+    await dp.waitForFunction(() => { const s = window.__meridian.sim; return Math.abs(Math.atan2(Math.sin(s.player.yaw - s.cam.yaw), Math.cos(s.player.yaw - s.cam.yaw))) < 0.3; }, null, { timeout: 5000 }).catch(() => undefined);
     const cam1 = await dp.evaluate(() => ({ cam: window.__meridian.sim.cam.yaw, hero: window.__meridian.sim.player.yaw }));
     check("moving the mouse right turns the camera and the hero right", cam1.cam > cam0 + 0.3 && Math.abs(cam1.hero - cam1.cam) < 0.3, `cam ${cam0.toFixed(2)} -> ${cam1.cam.toFixed(2)}, hero ${cam1.hero.toFixed(2)} (simulated mouse capture)`);
     await dp.evaluate(() => delete document.pointerLockElement);
