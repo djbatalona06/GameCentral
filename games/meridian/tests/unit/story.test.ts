@@ -309,13 +309,15 @@ describe("chapter graph helpers", () => {
   });
 });
 
-describe("save version 3", () => {
+describe("save migrations (story and loot)", () => {
   it("upgrades a version 2 save and keeps all its progress", () => {
     const v2 = { ...newSave(1, 2), version: 2 } as Record<string, unknown>;
     delete v2.story;
+    delete v2.economy;
     v2.currentChapter = "ch04";
     const out = migrate(JSON.parse(JSON.stringify(v2)));
-    expect(out.version).toBe(3);
+    expect(out.version).toBe(4);
+    expect(out.economy.owned).toEqual(["pistol"]);
     expect(out.currentChapter).toBe("ch04");
     expect(out.difficulty).toBe(2);
     expect(out.story).toEqual(newStoryState());
@@ -323,8 +325,9 @@ describe("save version 3", () => {
 
   it("upgrades a version 1 save all the way", () => {
     const out = migrate({ version: 1, slot: 0, chapter: "ch02", checkpoint: "c1", time: 99, treasures: ["a"], savedAt: 1 });
-    expect(out.version).toBe(3);
+    expect(out.version).toBe(4);
     expect(out.story).toEqual(newStoryState());
+    expect(out.economy.salvage).toBe(0);
     expect(out.chapters.ch02.treasures).toEqual(["a"]);
   });
 });

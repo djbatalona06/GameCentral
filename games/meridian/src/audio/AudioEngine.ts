@@ -109,6 +109,14 @@ export class AudioEngine {
         mx.tone("ui", 700, 0.08, "triangle", 0.3);
         mx.tone("ui", 1050, 0.1, "triangle", 0.3, 0.07);
         break;
+      case "loot":
+        // A small coin clink (higher for salvage, lower for parts and powder).
+        mx.tone("ui", ev.resource === "salvage" ? 1568 : 988, 0.06, "triangle", 0.16);
+        mx.tone("ui", ev.resource === "salvage" ? 2093 : 1319, 0.08, "triangle", 0.12, 0.05);
+        break;
+      case "cacheOpened":
+        mx.noiseHit("sfx", 0.25, "lowpass", 900, 0.4, ev.pos);
+        break;
       case "treasure":
         [0, 4, 7, 12].forEach((s, i) => mx.tone("ui", 523 * Math.pow(2, s / 12), 0.35, "sine", 0.3, i * 0.09));
         break;

@@ -244,7 +244,49 @@ export class LevelBuilder {
     return this;
   }
 
-  /** Tall boundary walls on both sides of a corridor running along Z. */
+  // ------------------------------------------------------------------ open maps and loot
+
+  /**
+   * The invisible edge of the playable area: four very tall boxes around a rectangle. They stop
+   * the player and enemies but nothing is drawn, so the land and sky look like they go on.
+   */
+  bounds(minX: number, maxX: number, z0: number, z1: number, y0 = -60, y1 = 240): this {
+    const t = 2;
+    const o = { boundary: true };
+    this.box([minX - t, y0, z0 - t], [minX, y1, z1 + t], "rock", o);
+    this.box([maxX, y0, z0 - t], [maxX + t, y1, z1 + t], "rock", o);
+    this.box([minX, y0, z0 - t], [maxX, y1, z0], "rock", o);
+    this.box([minX, y0, z1], [maxX, y1, z1 + t], "rock", o);
+    return this;
+  }
+
+  /** Wide, walkable ground beside the main route: a thin slab whose top is at `y`. */
+  apron(x0: number, x1: number, z0: number, z1: number, y: number, material: Material = "ground"): this {
+    return this.box([Math.min(x0, x1), y - 1, Math.min(z0, z1)], [Math.max(x0, x1), y, Math.max(z0, z1)], material);
+  }
+
+  /** A loot crate opened once with Interact. `pos` is on the ground. */
+  cache(id: string, pos: Vec, tier: "common" | "rare" | "boundary" = "common"): this {
+    this.data.interacts.push({ id, pos: v([pos[0], pos[1] + 0.6, pos[2]]), kind: "cache", label: tier === "common" ? "Open crate" : "Open cache", event: `cache:${id}`, radius: 1.8, once: true, tier });
+    return this;
+  }
+
+  /**
+   * A rare cache out at the edge of the map, marked with a tall cairn, flag or buoy you can spot
+   * from far away (the marker is solid, so it doubles as a little cover).
+   */
+  boundaryCache(id: string, pos: Vec): this {
+    this.block(pos[0] + 1.3, pos[2], 0.5, 0.5, pos[1], pos[1] + 3.2, "stone", { group: `marker-${id}` });
+    return this.cache(id, pos, "boundary");
+  }
+
+  /** A safe spot to buy, craft and upgrade. Using it also saves your progress. */
+  camp(id: string, pos: Vec, label: string): this {
+    this.data.interacts.push({ id, pos: v([pos[0], pos[1] + 0.8, pos[2]]), kind: "camp", label: `Rest at ${label}`, event: `camp:${id}`, radius: 2.2, once: false });
+    return this;
+  }
+
+  /** @deprecated Canyon walls. Act I now uses `bounds()` and open ground; kept for test levels. */
   walls(halfWidth: number, z0: number, z1: number, y0 = -8, y1 = 26): this {
     this.box([-halfWidth - 2, y0, z0], [-halfWidth, y1, z1], "rock");
     this.box([halfWidth, y0, z0], [halfWidth + 2, y1, z1], "rock");

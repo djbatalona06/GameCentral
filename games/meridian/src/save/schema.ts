@@ -3,8 +3,9 @@
 
 import type { ChapterStats, Difficulty, Snapshot } from "../sim/GameSim";
 import { type StoryState, newStoryState } from "../sim/story/State";
+import { type EconomyState, newEconomy } from "../sim/loot/Economy";
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 export const SLOT_COUNT = 3;
 export const AUTOSAVE_SLOT = 99;
 
@@ -32,10 +33,15 @@ export interface SaveFile {
   newGamePlus: boolean;
   /** What the story remembers between chapters (relationships, flags, choices). */
   story: StoryState;
+  /** Salvage, parts and powder, weapons owned and weapon upgrades (carried between chapters). */
+  economy: EconomyState;
 }
 
+/** Save format before loot, camps and upgrades. */
+export type SaveFileV3 = Omit<SaveFile, "version" | "economy"> & { version: 3 };
+
 /** Save format before story choices existed. */
-export type SaveFileV2 = Omit<SaveFile, "version" | "story"> & { version: 2 };
+export type SaveFileV2 = Omit<SaveFileV3, "version" | "story"> & { version: 2 };
 
 /** The very first save format, kept so migration can be tested. */
 export interface SaveFileV1 {
@@ -63,6 +69,7 @@ export function newSave(slot: number, difficulty: Difficulty, now = new Date()):
     unlocks: [],
     newGamePlus: false,
     story: newStoryState(),
+    economy: newEconomy(),
   };
 }
 
@@ -80,6 +87,8 @@ export function isSaveFile(x: unknown): x is SaveFile {
     Array.isArray(s.journal) &&
     Array.isArray(s.unlocks) &&
     typeof s.story === "object" &&
-    s.story !== null
+    s.story !== null &&
+    typeof s.economy === "object" &&
+    s.economy !== null
   );
 }

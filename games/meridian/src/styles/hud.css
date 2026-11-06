@@ -281,3 +281,7 @@ body.reduce-motion .hud * { animation: none !important; transition: none !import
   mask-image: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 62%, #000 100%);
 }
 body.reduce-motion #speedlines { display: none; }
+
+/* Loot purse under the ammo counter; it glows briefly when loot comes in. */
+.hud .ammo .purse { display: block; font-size: 0.8em; opacity: 0.85; margin-top: 2px; }
+.hud .ammo .purse.flash { color: #f4c84a; opacity: 1; }

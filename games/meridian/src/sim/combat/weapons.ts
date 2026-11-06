@@ -2,6 +2,7 @@
 // spread bloom, recoil, damage falloff and headshots.
 
 import { clamp, lerp } from "../math";
+import { type Tiers, effectiveWeapon } from "../loot/upgrades";
 
 export type WeaponId = "pistol" | "revolver" | "rifle" | "shotgun" | "marksman";
 export type WeaponSlot = "sidearm" | "long";
@@ -111,11 +112,27 @@ export interface WeaponState {
   reloadLeft: number;
   bloom: number;
   shotIndex: number;
+  /** Camp upgrades for this weapon type (missing = stock). */
+  tiers?: Tiers;
 }
 
-export const newWeaponState = (id: WeaponId, reserve?: number): WeaponState => ({
+// Upgraded stats, cached by weapon and tier values (at most 5 x 4^4 entries).
+const defCache = new Map<string, WeaponDef>();
+
+/** The stats a carried weapon really has: the base table plus its upgrades. */
+export function defOf(w: Pick<WeaponState, "id" | "tiers">): WeaponDef {
+  const t = w.tiers;
+  if (!t || (!t.damage && !t.mag && !t.reload && !t.stability)) return WEAPONS[w.id];
+  const key = `${w.id}:${t.damage}${t.mag}${t.reload}${t.stability}`;
+  let d = defCache.get(key);
+  if (!d) defCache.set(key, (d = effectiveWeapon(WEAPONS[w.id], t)));
+  return d;
+}
+
+export const newWeaponState = (id: WeaponId, reserve?: number, tiers?: Tiers): WeaponState => ({
   id,
-  mag: WEAPONS[id].magSize,
+  tiers,
+  mag: defOf({ id, tiers }).magSize,
   reserve: reserve ?? Math.floor(WEAPONS[id].reserveMax / 2),
   cooldown: 0,
   reloadLeft: 0,
@@ -124,7 +141,7 @@ export const newWeaponState = (id: WeaponId, reserve?: number): WeaponState => (
 });
 
 export function tickWeapon(w: WeaponState, dt: number): void {
-  const def = WEAPONS[w.id];
+  const def = defOf(w);
   w.cooldown = Math.max(0, w.cooldown - dt);
   w.bloom = Math.max(0, w.bloom - def.bloomDecay * dt);
   if (w.reloadLeft > 0) {
@@ -145,7 +162,7 @@ export function canFire(w: WeaponState): boolean {
 }
 
 export function startReload(w: WeaponState): boolean {
-  const def = WEAPONS[w.id];
+  const def = defOf(w);
   if (w.reloadLeft > 0 || w.mag >= def.magSize || w.reserve <= 0) return false;
   w.reloadLeft = def.reloadTime;
   return true;
@@ -158,7 +175,7 @@ export function cancelReload(w: WeaponState): void {
 
 /** Consumes a round and returns the recoil to apply to the camera. */
 export function fire(w: WeaponState): { pitch: number; yaw: number } {
-  const def = WEAPONS[w.id];
+  const def = defOf(w);
   w.mag -= 1;
   w.cooldown = def.fireInterval;
   w.bloom = Math.min(def.bloomMax, w.bloom + def.bloomPerShot);

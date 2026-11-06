@@ -3,7 +3,8 @@
 import hudHtml from "./screens/hud.html?raw";
 import { TUNING } from "../config/tuning";
 import type { Settings } from "../core/Settings";
-import { WEAPONS, currentSpread } from "../sim/combat/weapons";
+import { WEAPONS, currentSpread, defOf } from "../sim/combat/weapons";
+import { RESOURCE_NAMES, type Resource } from "../sim/loot/items";
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, yawOf, sub } from "../sim/math";
 import type { Speaker } from "../sim/story/types";
@@ -69,6 +70,9 @@ export class HUD {
   }
 
   private lastBoundaryToast = -Infinity;
+  private lootFlash = 0;
+  private lootText = "";
+  private lootGain = new Map<Resource, number>();
 
   /** A short notice in the toast area (also used outside sim events, e.g. a new controller). */
   notice(title: string, body = ""): void {
@@ -131,6 +135,16 @@ export class HUD {
         break;
       case "pickup":
         this.toast(ev.label);
+        break;
+      case "loot":
+        // Several drops in a row add up into one "+n" flash instead of a stack of toasts.
+        if (this.lootFlash <= 0) this.lootGain.clear();
+        this.lootGain.set(ev.resource, (this.lootGain.get(ev.resource) ?? 0) + ev.amount);
+        this.lootText = [...this.lootGain].map(([r, n]) => `+${n} ${RESOURCE_NAMES[r]}`).join(" ");
+        this.lootFlash = 2;
+        break;
+      case "cacheOpened":
+        if (ev.tier === "boundary") this.toast("Edge cache found", " Extra loot for exploring the far side of the map.");
         break;
       case "boundary":
         // Once every few seconds at most, so walking along the edge doesn't flood the screen.
@@ -294,10 +308,16 @@ export class HUD {
       this.q("weapon-name").textContent = WEAPONS[w.id].name + (w.reloadLeft > 0 ? "  reloading…" : "");
       const mag = this.q("mag");
       mag.textContent = String(w.mag);
-      mag.classList.toggle("low", w.mag <= Math.ceil(WEAPONS[w.id].magSize * 0.25));
+      mag.classList.toggle("low", w.mag <= Math.ceil(defOf(w).magSize * 0.25));
       this.q("reserve").textContent = `/ ${w.reserve}`;
-      this.q("throwables").textContent = `Grenades ${sim.grenades} · Bottles ${sim.bottles}`;
+      this.q("throwables").textContent = `Grenades ${sim.grenades} · Bottles ${sim.bottles}` + (sim.armor > 0 ? ` · Plate ${Math.round(sim.armor)}` : "");
     }
+    // The purse: salvage always, and a short "+12" flash when loot comes in.
+    const purse = this.q("purse");
+    const e = sim.economy;
+    purse.textContent = `Salvage ${e.salvage} · Parts ${e.parts} · Powder ${e.powder}` + (this.lootFlash > 0 ? `  ${this.lootText}` : "");
+    purse.classList.toggle("flash", this.lootFlash > 0);
+    this.lootFlash = Math.max(0, this.lootFlash - dt);
 
     // Context prompt with the right button name for the current device.
     const pr = this.q("prompt");

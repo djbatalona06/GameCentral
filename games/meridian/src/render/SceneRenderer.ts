@@ -51,7 +51,7 @@ import { proceduralPBR } from "./materials/ProceduralPBR";
 import { createSky, luminance, panoramaUrl } from "./Sky";
 import { createWaterMaterial } from "./WaterShader";
 import { Figure, OUTFITS, outfitFor, type Anim, type FigureLook, type Outfit } from "./Figure";
-import { bellMesh, jeepMesh } from "./meshUtil";
+import { bellMesh, boxShape, cylShape, jeepMesh, mergeShapes } from "./meshUtil";
 import { Hazards, Scrolling, Searchlights, Weather } from "./SetPieces";
 import { Ambient } from "./Ambient";
 import { Juice } from "./Juice";
@@ -117,6 +117,9 @@ export class SceneRenderer {
   private interactMeshes = new Map<string, Mesh>();
   private bellMeshes = new Map<string, { mesh: Mesh; swing: number; flash: number }>();
   private dropMeshes = new Map<string, Mesh>();
+  /** Loot crates: the lid tips open once looted. */
+  private cacheLids = new Map<string, Mesh>();
+  private dropMats = new Map<string, StandardMaterial>();
   private pillarFaces = new Map<string, StandardMaterial>();
   private ropeMeshes = new Map<string, Mesh>();
   private player: Figure | null = null;
@@ -555,7 +558,8 @@ export class SceneRenderer {
             ? MeshBuilder.CreateCylinder(p.id, { height: 0.35, diameter: 0.12 }, scene)
             : MeshBuilder.CreateBox(p.id, { width: p.type === "weapon" ? 0.9 : 0.4, height: 0.22, depth: 0.25 }, scene);
       m.position = v(p.pos);
-      m.material = flatMaterial(scene, `pk-${p.id}`, p.type === "ammo" ? "#3c8d40" : p.type === "weapon" ? "#2c3e50" : p.type === "grenade" ? "#556b2f" : "#7fb8a4", { emissive: 0.25 });
+      const pkColor: Record<string, string> = { ammo: "#3c8d40", weapon: "#2c3e50", grenade: "#556b2f", bottle: "#7fb8a4", salvage: "#e8b923", parts: "#9aa7b0", powder: "#c0392b" };
+      m.material = flatMaterial(scene, `pk-${p.id}`, pkColor[p.type] ?? "#7fb8a4", { emissive: p.type === "salvage" ? 0.55 : 0.25 });
       this.pickupMeshes.set(p.id, m);
     }
     const gold = flatMaterial(scene, "gold", PALETTE.treasure, { emissive: 0.6, specular: 0.8 });
@@ -590,6 +594,41 @@ export class SceneRenderer {
         h.position = v(i.pos).add(new Vector3(0, 0.2, 0.3));
         h.rotation.x = 0.5;
         h.material = flatMaterial(scene, `leverMat-${i.id}`, i.kind === "valve" ? "#c0392b" : "#b03a2e", { emissive: 0.3 });
+      }
+      if (i.kind === "cache") {
+        // A sturdy crate with brass corners; boundary caches are bigger and painted.
+        const big = i.tier === "boundary";
+        const w = big ? 1.1 : 0.8;
+        const body = mergeShapes(scene, `cache-${i.id}`, [
+          boxShape(w, 0.5, w * 0.62, 0, 0.25, 0, big ? "#2f5d7c" : "#7a5230"),
+          boxShape(w + 0.04, 0.06, w * 0.62 + 0.04, 0, 0.08, 0, "#c79a3c"),
+          boxShape(w + 0.04, 0.06, w * 0.62 + 0.04, 0, 0.42, 0, "#c79a3c"),
+        ]);
+        body.position = v(i.pos).add(new Vector3(0, -0.6, 0));
+        const lid = mergeShapes(scene, `cacheLid-${i.id}`, [boxShape(w + 0.02, 0.12, w * 0.62 + 0.02, 0, 0.06, w * 0.31, big ? "#244a63" : "#664424")]);
+        lid.parent = body;
+        lid.position.set(0, 0.5, -w * 0.31);
+        this.shadows?.addShadowCaster(body);
+        this.cacheLids.set(i.id, lid);
+      }
+      if (i.kind === "camp") {
+        // A small canvas tent, a ring of stones and a fire.
+        const base = v(i.pos).add(new Vector3(0, -0.8, 0));
+        const tent = mergeShapes(scene, `camp-${i.id}`, [
+          cylShape(0, 2.2, 2.4, 0, 0.75, 1.6, "#c8b48a", true, 3),
+          boxShape(0.1, 0.12, 0.1, -1.0, 0.06, 0, "#6b6b6b"),
+          boxShape(0.1, 0.12, 0.1, 1.0, 0.06, 0, "#6b6b6b"),
+          ...[0, 1, 2, 3, 4, 5, 6, 7].map((k) => boxShape(0.18, 0.12, 0.18, Math.sin((k / 8) * Math.PI * 2) * 0.45, 0.06, -1 + Math.cos((k / 8) * Math.PI * 2) * 0.45, "#7d7468")),
+          boxShape(0.5, 0.08, 0.08, 0, 0.1, -1, "#4a3220"),
+          boxShape(0.08, 0.08, 0.5, 0, 0.14, -1, "#4a3220"),
+          boxShape(1.2, 0.35, 0.35, 1.4, 0.18, -0.6, "#6e5434"),
+        ]);
+        tent.position = base;
+        this.shadows?.addShadowCaster(tent);
+        const fire = MeshBuilder.CreateCylinder(`campFire-${i.id}`, { height: 0.5, diameterTop: 0, diameterBottom: 0.35, tessellation: 7 }, scene);
+        fire.position = base.add(new Vector3(0, 0.38, -1));
+        fire.material = flatMaterial(scene, `campFireMat-${i.id}`, "#ff9a3c", { emissive: 1 });
+        fire.isPickable = false;
       }
       if (i.kind === "panel") {
         const box = MeshBuilder.CreateBox(`panel-${i.id}`, { width: 0.6, height: 0.8, depth: 0.2 }, scene);
@@ -996,6 +1035,10 @@ export class SceneRenderer {
       m.setEnabled(visible.has(id) && !(sim.riding && sim.world.data.interacts.find((i) => i.id === id)?.kind === "vehicle"));
       m.rotation.y = this.time * 2;
     }
+    for (const [id, lid] of this.cacheLids) {
+      const open = sim.interactsUsed.has(id);
+      lid.rotation.x += ((open ? -1.9 : 0) - lid.rotation.x) * Math.min(1, dt * 6);
+    }
     // Bells swing and glow when rung.
     for (const b of this.bellMeshes.values()) {
       b.swing = Math.max(0, b.swing - dt * 0.8);
@@ -1016,15 +1059,33 @@ export class SceneRenderer {
         }
       });
     }
-    // Enemy weapon drops.
+    // Enemy weapon drops, and loot: gold salvage coins, steel parts, red powder tins.
     for (const d of sim.dynamicPickups) {
       if (!this.dropMeshes.has(d.id)) {
-        const m = MeshBuilder.CreateBox(d.id, { width: 0.8, height: 0.18, depth: 0.22 }, this.scene!);
-        m.material = flatMaterial(this.scene!, `drop-${d.id}`, "#2c3e50", { emissive: 0.3 });
+        let m: Mesh;
+        if (d.resource) {
+          const color = d.resource === "salvage" ? "#e8b923" : d.resource === "parts" ? "#9aa7b0" : "#c0392b";
+          let mat = this.dropMats.get(d.resource);
+          if (!mat) this.dropMats.set(d.resource, (mat = flatMaterial(this.scene!, `loot-${d.resource}`, color, { emissive: 0.55, specular: 0.6 })));
+          m =
+            d.resource === "salvage"
+              ? MeshBuilder.CreateCylinder(d.id, { height: 0.05, diameter: 0.26, tessellation: 12 }, this.scene!)
+              : d.resource === "parts"
+                ? MeshBuilder.CreateTorus(d.id, { diameter: 0.22, thickness: 0.06, tessellation: 10 }, this.scene!)
+                : MeshBuilder.CreateCylinder(d.id, { height: 0.2, diameter: 0.16, tessellation: 10 }, this.scene!);
+          if (d.resource === "salvage") m.rotation.x = Math.PI / 2;
+          m.material = mat;
+        } else {
+          m = MeshBuilder.CreateBox(d.id, { width: 0.8, height: 0.18, depth: 0.22 }, this.scene!);
+          m.material = flatMaterial(this.scene!, `drop-${d.id}`, "#2c3e50", { emissive: 0.3 });
+        }
+        m.isPickable = false;
         m.position = v(d.pos);
         this.dropMeshes.set(d.id, m);
       }
-      this.dropMeshes.get(d.id)!.rotation.y = this.time;
+      const m = this.dropMeshes.get(d.id)!;
+      m.rotation.y = this.time * (d.resource ? 2.2 : 1);
+      if (d.resource) m.position.y = d.pos.y + Math.sin(this.time * 3 + d.pos.x) * 0.06;
     }
     for (const [id, m] of this.dropMeshes) {
       if (!sim.dynamicPickups.some((d) => d.id === id)) {
@@ -1369,6 +1430,8 @@ export class SceneRenderer {
     this.interactMeshes.clear();
     this.bellMeshes.clear();
     this.dropMeshes.clear();
+    this.cacheLids.clear();
+    this.dropMats.clear();
     this.pillarFaces.clear();
     this.ropeMeshes.clear();
     this.enemies.clear();

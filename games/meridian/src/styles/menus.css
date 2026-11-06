@@ -248,3 +248,12 @@ button:not(:disabled):active { transform: translateY(0) scale(0.98); }
 
 body.reduce-motion .screen *, body.reduce-motion .screen { animation-delay: 0s !important; }
 @media (prefers-reduced-motion: reduce) { .screen *, .screen { animation-delay: 0s !important; } }
+
+/* Camp: buy, craft and upgrade */
+.camp .purse { font-weight: 600; color: var(--ink); }
+.camp-note { min-height: 1.4em; margin: 0; color: var(--ink-dim); text-align: center; }
+.camp-list { max-height: min(52vh, 420px); overflow-y: auto; }
+.camp-list button { display: flex; justify-content: space-between; gap: 16px; text-align: left; }
+.camp-list button .cost { color: var(--ink-dim); white-space: nowrap; }
+.camp-list button[aria-disabled="true"] { opacity: 0.55; }
+.camp-list .camp-group { margin: 10px 0 2px; font-size: 0.9em; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.06em; }
