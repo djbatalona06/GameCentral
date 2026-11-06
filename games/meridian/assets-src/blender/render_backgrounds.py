@@ -811,7 +811,8 @@ def ch05(sc, mats, rng, pal):
 def ch06(sc, mats, rng, pal):
     """Night Train to Varanask: dark pine mountains, a stone viaduct and a lit train."""
     bumps = [(rng.uniform(-180, 180), rng.uniform(1500, 5000), rng.uniform(500, 900), rng.uniform(500, 900), None) for _ in range(10)]
-    bumps += [(-52, 640, 150, 210, None), (26, 620, 150, 230, None)]  # valley sides, clear of the viaduct
+    # (The old close "valley side" hills are gone: the line runs across open high country now,
+    # so the view from the train is wide rather than a gorge.)
     t = Terrain(66, 900, scale=0.0007, ridged=True, base=-60.0, bumps=bumps, shore=0.25)
     t.build(sc, mats.terrain("night-mtn", "#2b3528", "#4a4d55", snow_hex="#c5cedb", snow_from=650, slope_rock="#3d4048"), 150, 12000)
     trees(sc, mats, t, rng, 3800, (-180, 180), (160, 2400), "#162019", size=(14, 26), kind="pine", min_z=-55, max_z=560)
@@ -1016,6 +1017,245 @@ SCENES = {"key-art": key_art, "ch01": ch01, "ch02": ch02, "ch03": ch03, "ch04": 
 
 # ---------------------------------------------------------------------------------- render + save
 
+# ---------------------------------------------------------------------------------- playable terrain
+#
+# The panoramas are a sky at infinite distance. The game also needs real land around the
+# playable area, so the maps look like they go on for ever instead of ending at canyon walls.
+# For each chapter this builds a terrain mesh (exported as a .glb the game loads):
+#
+#   * inside the playable area it sits just under the level's floors, so it never shows through;
+#   * right outside the low rock edges it carries on at the same height, then rolls gently;
+#   * further out it blends into the very same hills, coast or mountains the panorama shows,
+#     so the land meets the horizon of the background.
+#
+# Coordinates: the game is y-up (x right, z forward). The glTF exporter turns Blender's z-up
+# into y-up as (X, Z, -Y), so vertices are written as Blender (gx, -gz, gy) to come out as game
+# (gx, gy, gz). The game loads the mesh without the glTF root's handedness flip (see Terrain.ts).
+
+# Vertex colours per chapter: (low ground, high ground, steep rock, snow or None, snow height, sea level or None).
+TERRAIN_COLOURS = {
+    "ch01": ("#b9a77e", "#7e776a", "#5a5650", None, 0, -0.25),
+    "ch02": ("#c9b38a", "#9a8462", "#7a6a50", None, 0, -0.4),
+    "ch03": ("#3f5c2b", "#5b6a45", "#6d6b5c", None, 0, None),
+    "ch04": ("#d2b07a", "#b08b5e", "#8b6a4c", None, 0, None),
+    "ch05": ("#dfe5ea", "#a5aab0", "#6a6660", "#eef2f6", 60, None),
+    "ch07": ("#45494f", "#55585c", "#3b3f45", None, 0, -0.8),
+}
+SEA_HEX = {"ch01": "#1d5866", "ch02": "#1f5560", "ch07": "#10222c"}
+
+CELL = 4.0  # metres per cell of the level's floor map
+LEVELS = {}  # filled from levels.json (npm run export-levels)
+
+
+def _level_fields(level, pad):
+    """Floor height per 4 m cell (lowest walkable top), whether the cell is inside the edges,
+    and how far each cell is from the playable floor."""
+    boxes = np.array(level["boxes"], dtype=np.float64)
+    solid = boxes[(boxes[:, 6].astype(int) & 7) == 0]  # not boundary, cover or hidden
+    edges = boxes[(boxes[:, 6].astype(int) & 1) == 1]
+    thick = solid[(solid[:, 4] - solid[:, 1]) >= 0.3]
+    x0, z0 = thick[:, 0].min() - pad, thick[:, 2].min() - pad
+    x1, z1 = thick[:, 3].max() + pad, thick[:, 5].max() + pad
+    nx, nz = int(math.ceil((x1 - x0) / CELL)), int(math.ceil((z1 - z0) / CELL))
+    cx = x0 + (np.arange(nx) + 0.5) * CELL
+    cz = z0 + (np.arange(nz) + 0.5) * CELL
+    CX, CZ = np.meshgrid(cx, cz, indexing="ij")
+    floor = np.full((nx, nz), np.inf)
+    for b in thick:
+        m = (CX >= b[0]) & (CX <= b[3]) & (CZ >= b[2]) & (CZ <= b[5])
+        floor[m] = np.minimum(floor[m], b[4])
+    for rp in level["ramps"]:
+        m = (CX >= rp[0]) & (CX <= rp[3]) & (CZ >= rp[2]) & (CZ <= rp[5])
+        floor[m] = np.minimum(floor[m], rp[1])
+    has = np.isfinite(floor)
+    # Inside the edges: an invisible edge on both sides in x (corridors, pockets).
+    left = np.zeros_like(has)
+    right = np.zeros_like(has)
+    inside_edge = np.zeros_like(has)
+    for e in edges:
+        rows = (CZ >= e[2]) & (CZ <= e[5])
+        left |= rows & (CX >= e[3])
+        right |= rows & (CX <= e[0])
+        inside_edge |= rows & (CX >= e[0]) & (CX <= e[3])
+    inside = left & right & ~inside_edge
+    deep = inside & ~has  # a chasm inside the map: keep it a long way down
+    f = np.where(has, floor, np.nan)
+    f[deep] = level["killY"] + 4
+    # Fill the outside by spreading neighbouring floor heights outwards, and count the steps.
+    dist = np.where(np.isfinite(f), 0.0, np.inf)
+    for it in range(1, int(pad / CELL) + 2):
+        miss = ~np.isfinite(f)
+        if not miss.any():
+            break
+        acc = np.zeros_like(f)
+        cnt = np.zeros_like(f)
+        for dx in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                if dx == 0 and dz == 0:
+                    continue
+                sh = np.roll(np.roll(f, dx, 0), dz, 1)
+                ok = np.isfinite(sh) & ~deep  # chasm depth never spreads outside
+                acc += np.where(ok, sh, 0)
+                cnt += ok
+        new = miss & (cnt > 0)
+        f[new] = acc[new] / cnt[new]
+        dist[new] = it * CELL
+    rest = ~np.isfinite(f)
+    f[rest] = np.nanmedian(np.where(has, floor, np.nan))
+    dist[rest] = pad
+    return dict(x0=x0, z0=z0, nx=nx, nz=nz, floor=f, dist=dist, has=has, deep=deep, rect=(x0 + pad, z0 + pad, x1 - pad, z1 - pad))
+
+
+def _sample(field, X, Z):
+    ix = np.clip(((X - field["x0"]) / CELL).astype(int), 0, field["nx"] - 1)
+    iz = np.clip(((Z - field["z0"]) / CELL).astype(int), 0, field["nz"] - 1)
+    return ix, iz
+
+
+def _axis(lo, hi, step, reach, grow=1.13):
+    """Grid lines: even spacing across the level, then wider and wider steps out to `reach`."""
+    mid = np.arange(lo - 24, hi + 24 + 1e-6, step)
+    out = []
+    d, s = 0.0, step
+    while d < reach:
+        s *= grow
+        d += s
+        out.append(d)
+    out = np.array(out)
+    return np.concatenate([mid[0] - out[::-1], mid, mid[-1] + out])
+
+
+def near_terrain(scene_id, terr, level, coarse=False):
+    """Vertices (game coords), quads and sRGB colours for one chapter's playable terrain."""
+    pad = 240.0
+    field = _level_fields(level, pad)
+    rx0, rz0, rx1, rz1 = field["rect"]
+    step = 6.0 if not coarse else 16.0
+    if scene_id == "ch04":
+        step *= 1.5  # the salt road is very long
+    reach = 1300.0
+    xs = _axis(rx0, rx1, step, reach, 1.13 if not coarse else 1.3)
+    zs = _axis(rz0, rz1, step * (1.6 if scene_id == "ch04" else 1.0), reach, 1.13 if not coarse else 1.3)
+    GX, GZ = np.meshgrid(xs, zs, indexing="ij")
+    ix, iz = _sample(field, GX, GZ)
+    F = field["floor"][ix, iz]
+    D = field["dist"][ix, iz]
+    # Beyond the floor map, keep counting the distance.
+    out_x = np.maximum(0, np.maximum(rx0 - pad - GX, GX - (rx1 + pad)))
+    out_z = np.maximum(0, np.maximum(rz0 - pad - GZ, GZ - (rz1 + pad)))
+    D = D + np.hypot(out_x, out_z)
+    inside = field["has"][ix, iz] & (out_x == 0) & (out_z == 0)
+    deep = field["deep"][ix, iz] & (out_x == 0) & (out_z == 0)
+    seed = sum(map(ord, scene_id))
+    # Close to the map: the same height as the floor beside the edge, with a gentle roll.
+    roll = fbm(GX * 0.012 + 5.3, GZ * 0.012 - 2.1, 4, seed + 9) - 0.45
+    near = F - 0.6 + 6.0 * smoothstep(10, 160, D) * roll + 2.0 * smoothstep(20, 200, D)
+    # Far away: exactly the land of the panorama (Blender X = game x, Blender Y = game z).
+    far = terr.height(GX, GZ)
+    w = smoothstep(80, 650, D)
+    H = near * (1 - w) + far * w
+    H = np.where(inside, F - 0.6, H)
+    H = np.where(deep, level["killY"] + 4, H)
+    # Colours: low ground to high ground, rock on steep slopes, snow up high.
+    low, high, rock, snow, snow_from, sea = TERRAIN_COLOURS[scene_id]
+    lo_c, hi_c, rk_c = srgb(low), srgb(high), srgb(rock)
+    ref = np.nanmedian(F)
+    t = smoothstep(ref + 4, ref + 160, H)[..., None]
+    col = lo_c * (1 - t) + hi_c * t
+    gx_, gz_ = np.gradient(H, xs, zs)
+    slope = smoothstep(0.35, 0.9, np.hypot(gx_, gz_))[..., None]
+    col = col * (1 - slope) + rk_c * slope
+    if snow:
+        sn = smoothstep(snow_from, snow_from + 60, H)[..., None] * (1 - slope * 0.7)
+        col = col * (1 - sn) + srgb(snow) * sn
+    if sea is not None:
+        wet = smoothstep(sea + 0.5, sea - 1.5, H)[..., None]
+        col = col * (1 - wet * 0.45)
+    col = col * (0.92 + 0.16 * fbm(GX * 0.05, GZ * 0.05, 3, seed + 21)[..., None])
+    col = np.clip(col, 0, 1)
+    nx, nz = GX.shape
+    verts = np.stack([GX, H, GZ], -1).reshape(-1, 3)
+    i = np.arange(nx - 1)[:, None]
+    j = np.arange(nz - 1)[None, :]
+    a = i * nz + j
+    quads = np.stack([a, a + 1, a + nz + 1, a + nz], -1).reshape(-1, 4)
+    return verts, quads, col.reshape(-1, 3), sea, (xs[0], xs[-1], zs[0], zs[-1])
+
+
+def export_terrain(scene_id, terr, level, out_dir, coarse=False):
+    verts, quads, cols, sea, ext = near_terrain(scene_id, terr, level, coarse)
+    scn = bpy.data.scenes.new(f"terrain-{scene_id}")
+    me = bpy.data.meshes.new(f"terrain-{scene_id}")
+    bl = np.stack([verts[:, 0], -verts[:, 2], verts[:, 1]], -1)  # game (x, y, z) -> Blender (x, -z, y)
+    parts = [(bl, quads, cols)]
+    if sea is not None:
+        x0, x1, z0, z1 = ext
+        sq = np.array([[x0, -z0, sea], [x1, -z0, sea], [x1, -z1, sea], [x0, -z1, sea]], dtype=np.float64)
+        parts.append((sq, np.array([[0, 1, 2, 3]]), np.tile(srgb(SEA_HEX[scene_id]), (4, 1))))
+    V, Q, C = [], [], []
+    base = 0
+    for v, q, c in parts:
+        V.append(v)
+        Q.append(q + base)
+        C.append(c)
+        base += len(v)
+    V, Q, C = np.concatenate(V), np.concatenate(Q), np.concatenate(C)
+    me.vertices.add(len(V))
+    me.vertices.foreach_set("co", V.astype(np.float32).ravel())
+    me.loops.add(Q.size)
+    me.loops.foreach_set("vertex_index", Q.astype(np.int32).ravel())
+    me.polygons.add(len(Q))
+    me.polygons.foreach_set("loop_start", (np.arange(len(Q)) * 4).astype(np.int32))
+    me.update(calc_edges=True)
+    me.validate()
+    # Every face must point up (the sea quad and the grid are wound differently).
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.normal_update()
+    for f in bm.faces:
+        if f.normal.z < 0:
+            f.normal_flip()
+    bm.to_mesh(me)
+    bm.free()
+    try:
+        me.shade_smooth()
+    except AttributeError:
+        pass
+    # Linear colours in a float attribute: the exporter writes them as glTF COLOR_0 (linear).
+    attr = me.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
+    lin_c = np.concatenate([to_linear(C), np.ones((len(C), 1), dtype=np.float32)], -1)
+    attr.data.foreach_set("color", lin_c.astype(np.float32).ravel())
+    me.color_attributes.active_color = attr
+    mat = bpy.data.materials.new(f"terrain-{scene_id}")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    ca = nt.nodes.new("ShaderNodeVertexColor")
+    ca.layer_name = "Col"
+    nt.links.new(ca.outputs[0], bsdf.inputs[0])
+    me.materials.append(mat)
+    ob = bpy.data.objects.new(f"terrain-{scene_id}", me)
+    scn.collection.objects.link(ob)
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"{scene_id}{'-lo' if coarse else ''}.glb")
+    opts = dict(filepath=path, export_format="GLB", export_yup=True, export_normals=True,
+                export_texcoords=False, export_materials="EXPORT", export_apply=True, use_active_scene=True)
+    with bpy.context.temp_override(scene=scn, view_layer=scn.view_layers[0]):
+        last = None
+        for extra in (dict(export_vertex_color="ACTIVE"), dict(export_colors=True), {}):
+            try:
+                bpy.ops.export_scene.gltf(**opts, **extra)
+                last = None
+                break
+            except TypeError as err:
+                last = err
+        if last:
+            raise last
+    print(f"  terrain {os.path.relpath(path, GAME)}: {len(V)} vertices, {os.path.getsize(path) // 1024} KB", flush=True)
+    bpy.data.scenes.remove(scn)
+    return path
+
+
 def render_to(sc, cam, w, h, samples, path_png):
     sc.camera = cam
     sc.render.resolution_x, sc.render.resolution_y = w, h
@@ -1050,6 +1290,12 @@ def run(scene_id, args, palettes, tmp):
     t0 = time.time()
     terr, views = SCENES[scene_id](sc, mats, rng, pal)
     print(f"  built the scene in {time.time() - t0:.1f} s", flush=True)
+    level = LEVELS.get(scene_id)
+    if (args.terrain or args.terrain_only) and level and not level["scroll"] and scene_id in TERRAIN_COLOURS:
+        export_terrain(scene_id, terr, level, args.terrain_out)
+        export_terrain(scene_id, terr, level, args.terrain_out, coarse=True)
+    if args.terrain_only:
+        return
     pos, comp, pitch, lens = views["card"]
     view = camera_persp(sc, pos, comp, pitch, lens)
     out = args.out
@@ -1089,7 +1335,14 @@ def main():
     ap.add_argument("--out", default=os.path.join(GAME, "public", "backgrounds"))
     ap.add_argument("--tmp", default=os.path.join(HERE, ".render-tmp"))
     ap.add_argument("--fast", action="store_true", help="small, noisy preview renders")
+    ap.add_argument("--terrain", action="store_true", help="also export each chapter's playable terrain (.glb)")
+    ap.add_argument("--terrain-only", action="store_true", help="only export the terrain, render nothing")
+    ap.add_argument("--terrain-out", default=os.path.join(GAME, "assets-src", "terrain"))
     args = ap.parse_args(argv)
+    levels_path = os.path.join(HERE, "levels.json")
+    if os.path.exists(levels_path):
+        with open(levels_path) as f:
+            LEVELS.update({k: v for k, v in json.load(f).items() if not k.startswith("_")})
     with open(os.path.join(HERE, "palettes.json")) as f:
         palettes = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
     os.makedirs(args.out, exist_ok=True)

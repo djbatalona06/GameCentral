@@ -6,6 +6,7 @@ import { SettingsStore, defaultSettings } from "../../src/core/Settings";
 import { buttonName, detectFamily, keyName, resolveFamily, spokenButtonName } from "../../src/input/glyphs";
 import { deadzone } from "../../src/input/GamepadInput";
 import { autoTier } from "../../src/render/Quality";
+import { TERRAIN_CHAPTERS } from "../../src/render/Terrain";
 import { CHAPTERS } from "../../src/sim/chapters/registry";
 import { adaptTip } from "../../src/ui/controlText";
 import type { KeyValueStore } from "../../src/save/storage";
@@ -119,6 +120,28 @@ describe("Blender background pack", () => {
     }
     expect(existsSync(file("key-art.webp"))).toBe(true);
     expect(existsSync(file("key-art-sm.webp"))).toBe(true);
+  });
+  it("ships Blender terrain for every chapter that has land, within budget (the train scrolls its own)", () => {
+    const file = (f: string) => new URL(`../../public/assets/terrain/${f}`, import.meta.url);
+    for (const id of TERRAIN_CHAPTERS) {
+      for (const [f, maxKb] of [[`${id}.glb`, 450], [`${id}-lo.glb`, 150]] as const) {
+        expect(existsSync(file(f)), f).toBe(true);
+        expect(statSync(file(f)).size / 1024, f).toBeLessThanOrEqual(maxKb);
+      }
+    }
+    expect(TERRAIN_CHAPTERS).not.toContain("ch06");
+  });
+
+  it("the level export Blender builds terrain from is up to date with the chapters", () => {
+    const levels = JSON.parse(readFileSync(new URL("../../assets-src/blender/levels.json", import.meta.url), "utf8")) as Record<string, { boxes: number[][]; checkpoints: number[][] }>;
+    const r = (n: number) => Math.round(n * 100) / 100;
+    for (const ch of playable) {
+      const l = ch.build!();
+      const ex = levels[ch.id];
+      expect(ex, `${ch.id}: run npm run export-levels`).toBeDefined();
+      expect(ex.boxes.length, `${ch.id}: run npm run export-levels`).toBe(l.boxes.length);
+      expect(ex.checkpoints, `${ch.id}: run npm run export-levels`).toEqual(l.checkpoints.map((c) => [r(c.pos.x), r(c.pos.y), r(c.pos.z)]));
+    }
   });
 });
 

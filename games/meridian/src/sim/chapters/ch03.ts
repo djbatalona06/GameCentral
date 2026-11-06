@@ -9,7 +9,7 @@ export function buildCh03() {
   const b = new LevelBuilder("ch03", { top: "#a7c8c4", bottom: "#d9e6c3", fog: "#b4ccb0", fogDensity: 0.012 }).openWorld();
 
   // --- 1. Jungle path (stealth) -----------------------------------------------------------
-  b.box([-12, -8, -16], [12, 26, -12], "rock");
+  b.edgeCap([-12, -8, -16], [12, 26, -12], 1);
   b.walls(10, -14, 44);
   b.box([-10, -1, -12], [10, 0, 44], "ground");
   b.checkpoint("c1", [0, 0, -6], 0, "Serra Verde Trail");
@@ -115,7 +115,7 @@ export function buildCh03() {
   b.box([-2.5, 13, 186], [2.5, 16, 188], "stone");
   b.box([-8, 1, 188], [8, 8, 200], "stone");
   b.walls(8, 188, 202);
-  b.box([-10, 0, 200], [10, 26, 204], "rock");
+  b.edgeCap([-10, 0, 200], [10, 26, 204], -1);
   b.trigger([-8, 8, 192], [8, 11, 196], "vault");
   b.treasure("ch03-key", [0, 8.5, 198], "Green Stone Key", "Not gold. Not jewels. A key of carved serpentine, warm to the touch.");
 

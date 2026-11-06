@@ -25,6 +25,11 @@
 | 18 | Chapters 16–22 (Act III), New Game+, challenge modes, cloud saves | Planned |
 | 19 | Recorded voice acting, audio description of cutscenes | Planned |
 | 20 | Landscape only: turn-your-phone prompt, platform orientation locks, portrait layouts removed, new left-side gun/goal/walk controls | Done |
+| 22 | Movement and controls fixed (resume re-press, gamepad unplug, Shift-then-W sprint, wheel swap, camera vs walls, coyote time, hold-to-crouch, smooth drawing between ticks) | Done |
+| 23 | Barriers and cover: invisible map edges, enemies stop at walls, bodies push apart, cover protection, muffled sound, cover kit visuals | Done |
+| 24 | Looting engine: Salvage/Parts/Powder, caches, camps (buy, craft, upgrade), save v4 | Done |
+| 25 | Open maps: low edges instead of canyon walls, side pockets with edge caches, no-walk-around flood-fill test | Done |
+| 26 | Blender terrain per chapter (`.glb`) blended into re-rendered panoramas | Done |
 | 21 | Clean-up: boot to the home screen (Quick setup in the menu); desktop mouse/keys fixed (touchscreen laptops, first click, shooter style); short captions in stacked HUD lanes with device-aware tips; wildlife, game-feel effects, animated menus and character chatter | Done |
 
 ## How to add a chapter (repeatable recipe)

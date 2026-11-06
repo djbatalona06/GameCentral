@@ -10,7 +10,7 @@ export function buildCh02() {
   const b = new LevelBuilder("ch02", { top: "#f2b880", bottom: "#f6e3c4", fog: "#f3d7b0", fogDensity: 0.008 }).openWorld();
 
   // --- 1. Docks (stealth) -----------------------------------------------------------------
-  b.box([-12, -8, -16], [12, 26, -12], "rock");
+  b.edgeCap([-12, -8, -16], [12, 26, -12], 1);
   b.walls(10, -14, 60);
   b.box([-10, -1, -12], [10, 0, 56], "stone");
   b.checkpoint("c1", [0, 0, -6], 0, "Harbour Steps");
@@ -121,7 +121,7 @@ export function buildCh02() {
   b.box([-2, 0, 148], [2, 4, 150], "stone", { group: "archivedoor" });
   b.box([-12, 4, 148], [12, 10, 150], "plaster");
   b.walls(8, 150, 164);
-  b.box([-10, -8, 162], [10, 26, 166], "rock");
+  b.edgeCap([-10, -8, 162], [10, 26, 166], -1);
   b.trigger([-8, 0, 153], [8, 3, 157], "archive");
   b.treasure("ch02-ledger", [0, 0.5, 160], "Harbourmaster's Ledger", "An entry for 3 March 1574: 'Santa Brigida, Capt. C. de Ordaz, cargo: none declared.'");
 

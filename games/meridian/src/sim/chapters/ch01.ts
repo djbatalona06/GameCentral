@@ -9,7 +9,7 @@ export function buildCh01() {
   const b = new LevelBuilder("ch01", { top: "#7fb7d9", bottom: "#e8d9b5", fog: "#cfe3ee", fogDensity: 0.006 }).openWorld();
 
   // --- 1. Beach ---------------------------------------------------------------------------
-  b.box([-10, -8, -16], [10, 26, -12], "rock"); // back wall
+  b.edgeCap([-10, -8, -16], [10, 26, -12], 1); // back of the beach
   b.walls(8, -14, 40);
   b.edgeWall(-10, -8, 40, 100, 1); // west side
   b.edgeWall(8, 10, 82, 100, -1); // east side beyond the shelf
@@ -107,7 +107,7 @@ export function buildCh01() {
   // --- 9. Cove ---------------------------------------------------------------------------
   b.box([-8, -1, 195], [8, 1.5, 236], "sand");
   b.walls(8, 190, 238);
-  b.box([-10, -8, 236], [10, 26, 240], "rock");
+  b.edgeCap([-10, -8, 236], [10, 26, 240], -1);
   b.block(0, 229, 3, 6, 1.5, 2.6, "wood"); // Bram's boat
   b.trigger([-8, 1.5, 222], [8, 4, 226], "reach_boat");
   b.treasure("ch01-seal", [6, 1.9, 215], "Ordaz Family Seal", "A wax seal stamp: a compass rose wrapped in a serpent. The serpent bites a star.");

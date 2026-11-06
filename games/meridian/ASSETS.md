@@ -9,6 +9,7 @@ The background images in `public/backgrounds/` are original renders made for thi
 | `public/backgrounds/key-art*.webp` | Menu key art: the Drowned City at sunset | `assets-src/blender/render_backgrounds.py` | Same as this repository |
 | `public/backgrounds/chNN-pano*.webp` | 360° distant backdrop for each chapter | same | Same as this repository |
 | `public/backgrounds/chNN-card.webp` | Chapter-select card for each chapter | same | Same as this repository |
+| `public/assets/terrain/chNN(-lo).glb` | Open land around each chapter's level (vertex colours, no textures) | same script, `--terrain` | Same as this repository |
 
 Drop-in models added later through the asset pipeline are listed below.
 

@@ -11,10 +11,10 @@ Meridian has no server. "Backend" here means the data the game stores on the dev
 
 If IndexedDB is unavailable (some private-browsing modes), an in-memory store is used and the main menu warns that progress won't be kept.
 
-## SaveFile (version 3)
+## SaveFile (version 4)
 ```ts
 SaveFile {
-  version: 3
+  version: 4
   slot: number
   createdAt, updatedAt: ISO date strings
   playtimeSec: number
@@ -26,6 +26,13 @@ SaveFile {
   unlocks: string[]
   newGamePlus: boolean
   story: StoryState                    // what the story remembers between chapters (new in v3)
+  economy: EconomyState                // loot purse, owned weapons and upgrades (new in v4)
+}
+
+EconomyState {                          // src/sim/loot/Economy.ts
+  salvage, parts, powder: number        // whole numbers, never negative
+  owned: WeaponId[]                     // always includes "pistol"; guns found or bought
+  upgrades: { [weaponId]: { damage, mag, reload, stability: 0..3 } }
 }
 
 StoryState {
@@ -47,6 +54,8 @@ Snapshot {                              // everything needed to rebuild a checkp
   pending: { event, in }[]              // scheduled events that hadn't fired yet
   story?: StoryState                    // restored directly, never replayed (so nothing is counted twice)
   openChoices?: string[]                // questions asked but not yet answered
+  economy?: EconomyState                // the purse at this checkpoint (new in v4)
+  armor?: number                        // field plate left
 }
 ```
 
@@ -59,7 +68,7 @@ Snapshot.firedEvents ── refer to ──> ChapterScript.events keys
 ```
 
 ### Migrations
-`src/save/migrations.ts` upgrades saves one version at a time (v1 → v2 → v3 → …). v2 → v3 adds a neutral `story`; choices made before v3 cannot be recovered. Upgraded saves are written back so migration happens once. Saves from a newer version are refused with a clear message. A test covers the v1 → v2 path.
+`src/save/migrations.ts` upgrades saves one version at a time (v1 → v2 → v3 → …). v2 → v3 adds a neutral `story`; v3 → v4 adds an empty `economy` (guns carried in a mid-chapter checkpoint count as owned); choices made before v3 cannot be recovered. Upgraded saves are written back so migration happens once. Saves from a newer version are refused with a clear message. A test covers the v1 → v2 path.
 
 ## Content schema (chapters)
 ```ts

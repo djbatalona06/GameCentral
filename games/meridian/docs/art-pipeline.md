@@ -66,4 +66,16 @@ How it works:
 - **In the game:** each `chNN-pano.webp` is a 360° image. `Sky.ts` shows it above the horizon only and keeps its own gradient and fog below, so the level always meets the backdrop with no seam. The Low quality tier uses the smaller `-sm` file. High contrast mode keeps the plain sky.
 - **Matching colours:** `palettes.json` must use the same `top`, `bottom` and `fog` colours as the chapter's `LevelBuilder` call. A unit test checks this, and also that every file exists and stays within its size budget.
 
+## Playable terrain made in Blender
+Each chapter (except the train, whose scenery scrolls) also has real land around the level: `public/assets/terrain/chNN.glb` plus a smaller `chNN-lo.glb` for the Low tier.
+
+1. `npm run export-levels` writes `assets-src/blender/levels.json` from the real chapter code (a test fails if it is out of date).
+2. `npm run terrain` exports the terrain from Blender (`render_backgrounds.py --terrain-only`) and quantises it (`scripts/optimize-assets.mjs --terrain`). `npm run backgrounds` re-renders the panoramas and cards too (add `-- --terrain` to do both).
+
+How the terrain is shaped:
+- Inside the playable area it sits 0.6 m under the level's floors, so it never shows through. Chasms stay deep.
+- Just outside the low rock edges it carries on at the floor's height and rolls gently, so you look out over open ground instead of at a wall.
+- Further out it blends into the very same land function the panorama uses, so the hills meet the horizon of the backdrop.
+- Colours are vertex colours (no textures); the game draws them with fog. Budgets: 450 KB full, 150 KB low (tested).
+
 To change a location, edit its function (`ch01` … `ch07`, `key_art`) and re-render that one scene.

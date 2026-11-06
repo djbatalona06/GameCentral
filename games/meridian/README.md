@@ -38,7 +38,7 @@ python -m venv .venv && .venv/bin/pip install -r assets-src/blender/requirements
 .venv/bin/python -I assets-src/blender/render_backgrounds.py --only ch03 --fast   # quick preview of one
 .venv/bin/python -I assets-src/blender/render_backgrounds.py                     # everything, final quality
 ```
-Writes `public/backgrounds/` (key art, per-chapter 360° panoramas and cards). Scene colours come from `assets-src/blender/palettes.json`, which a unit test keeps equal to each chapter's sky. See `docs/art-pipeline.md`.
+Writes `public/backgrounds/` (key art, per-chapter 360° panoramas and cards). `npm run terrain` exports the open land around each level (`public/assets/terrain/`). Scene colours come from `assets-src/blender/palettes.json`, which a unit test keeps equal to each chapter's sky. See `docs/art-pipeline.md`.
 
 ## Controls
 | Action | Touch | Keyboard / mouse | Gamepad |
@@ -56,6 +56,9 @@ Writes `public/backgrounds/` (key art, per-chapter 360° panoramas and cards). S
 | Crouch | CROUCH | C | D-pad ↓ |
 | Point to objective | Tap the goal card (left) | H | D-pad ↑ |
 | Pause / journal | II | Esc / J | Menu / View |
+| Open a crate / rest at a camp | USE | E | Y |
+
+**Loot and camps.** Beaten guards, treasures and crates drop **Salvage** (money), **Parts** and **Powder**; walk over them to collect. Side pockets off the main path hide **edge caches** marked by a tall stone. At a **camp** (a tent and a fire) you can buy starting weapons, craft ammo, grenades, bottles and field plates, and upgrade each gun's damage, magazine, reload speed and stability. Upgrades carry over to every chapter, and resting at camp saves your game.
 
 Everything is remappable, and there are one-handed touch layouts. See Settings → Controls.
 

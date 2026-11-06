@@ -31,9 +31,11 @@ interface EdgeDef {
   z1: number;
   y0: number;
   y1: number;
-  /** +1 when the play area is on the +X side of this edge, -1 when it is on the -X side. */
+  /** +1 when the play area is on the + side of this edge (along `axis`), -1 when on the - side. */
   inward: 1 | -1;
   material: Material;
+  /** "x": a side wall (thin in X, runs along Z). "z": an end cap (thin in Z, runs along X). */
+  axis?: "x" | "z";
 }
 
 /** Height of the visible rock lip above the local floor: low enough to see the land beyond. */
@@ -333,6 +335,13 @@ export class LevelBuilder {
     return this;
   }
 
+  /** An end of the map (thin in Z, across X); `inward` is +1 when the play area is at larger Z. */
+  edgeCap(min: Vec, max: Vec, inward: 1 | -1, material: Material = "rock"): this {
+    if (!this.open) return this.box(min, max, material);
+    this.edges.push({ x0: min[0], x1: max[0], z0: min[2], z1: max[2], y0: min[1], y1: max[1], inward, material, axis: "z" });
+    return this;
+  }
+
   /**
    * A side pocket: the edge on one side opens up into an extra patch of ground with a boundary
    * cache (and its marker) at the far end. Pockets are dead ends, so they never skip a climb.
@@ -363,36 +372,47 @@ export class LevelBuilder {
 
   /** Builds the invisible barriers and the low rock lips for every open-world edge. */
   private finishEdges(): void {
-    const solids = this.data.boxes.filter((b) => !b.boundary);
+    // Floors only: not cover, barrels, or other tall walls and end caps.
+    const solids = this.data.boxes.filter((b) => !b.boundary && !b.cover && !b.explosive && b.max.y - b.min.y <= 24);
     const water = this.data.water;
     for (const e of this.edges) {
-      // Split the edge around any openings on it (pockets).
-      const inner = e.inward === 1 ? e.x1 : e.x0;
-      const holes = this.openings.filter((o) => o.inward === e.inward && Math.abs(o.x - inner) < 0.01 && o.z1 > e.z0 && o.z0 < e.z1).sort((a, b) => a.z0 - b.z0);
+      const ax = e.axis ?? "x";
+      // Work in (u = along the edge, w = across it) so side walls and end caps share one routine.
+      const u0 = ax === "x" ? e.z0 : e.x0;
+      const u1 = ax === "x" ? e.z1 : e.x1;
+      const inner = ax === "x" ? (e.inward === 1 ? e.x1 : e.x0) : e.inward === 1 ? e.z1 : e.z0;
+      const holes = this.openings
+        .filter((o) => ax === "x" && o.inward === e.inward && Math.abs(o.x - inner) < 0.01 && o.z1 > u0 && o.z0 < u1)
+        .sort((a, b) => a.z0 - b.z0);
       const parts: Array<[number, number]> = [];
-      let z = e.z0;
+      let u = u0;
       for (const h of holes) {
-        if (h.z0 > z) parts.push([z, h.z0]);
-        z = Math.max(z, h.z1);
+        if (h.z0 > u) parts.push([u, h.z0]);
+        u = Math.max(u, h.z1);
       }
-      if (z < e.z1) parts.push([z, e.z1]);
-      for (const [za, zb] of parts) {
+      if (u < u1) parts.push([u, u1]);
+      const rect = (a0: number, a1: number, ylo: number, yhi: number): [Vec, Vec] =>
+        ax === "x" ? [[e.x0, ylo, a0], [e.x1, yhi, a1]] : [[a0, ylo, e.z0], [a1, yhi, e.z1]];
+      for (const [ua, ub] of parts) {
         // The barrier: same footprint as the old wall and much taller, but invisible.
-        this.box([e.x0, e.y0 - 30, za], [e.x1, Math.max(e.y1, e.y0) + 120, zb], e.material, { boundary: true });
+        const [bmin, bmax] = rect(ua, ub, e.y0 - 30, Math.max(e.y1, e.y0) + 120);
+        this.box(bmin, bmax, e.material, { boundary: true });
         // The lip follows the floor beside it, in short slices.
         const step = 3;
-        for (let s0 = za; s0 < zb - 1e-6; s0 += step) {
-          const s1 = Math.min(zb, s0 + step);
-          const sx0 = e.inward === 1 ? inner : inner - 1.5;
-          const sx1 = e.inward === 1 ? inner + 1.5 : inner;
+        for (let s0 = ua; s0 < ub - 1e-6; s0 += step) {
+          const s1 = Math.min(ub, s0 + step);
+          const w0 = e.inward === 1 ? inner : inner - 1.5;
+          const w1 = e.inward === 1 ? inner + 1.5 : inner;
+          const [sx0, sx1, sz0, sz1] = ax === "x" ? [w0, w1, s0, s1] : [s0, s1, w0, w1];
           let floor = -Infinity;
           for (const b of solids) {
-            if (b.cover || b.explosive || b.max.y > e.y1 || b.max.x < sx0 || b.min.x > sx1 || b.max.z < s0 || b.min.z > s1) continue;
+            if (b.max.y > e.y1 || b.max.x < sx0 || b.min.x > sx1 || b.max.z < sz0 || b.min.z > sz1) continue;
             floor = Math.max(floor, b.max.y);
           }
-          for (const w of water) if (!(w.max.x < sx0 || w.min.x > sx1 || w.max.z < s0 || w.min.z > s1)) floor = Math.max(floor, w.max.y);
+          for (const w of water) if (!(w.max.x < sx0 || w.min.x > sx1 || w.max.z < sz0 || w.min.z > sz1)) floor = Math.max(floor, w.max.y);
           if (!Number.isFinite(floor)) continue; // a chasm: nothing to stand on, no lip needed
-          this.box([e.x0, e.y0, s0], [e.x1, floor + LIP_HEIGHT, s1], e.material);
+          const [lmin, lmax] = rect(s0, s1, e.y0, floor + LIP_HEIGHT);
+          this.box(lmin, lmax, e.material);
         }
       }
     }

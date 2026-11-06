@@ -35,6 +35,7 @@ import { Matrix, Quaternion, Vector3, Vector4 } from "@babylonjs/core/Maths/math
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, lookDir, type V3 } from "../sim/math";
 import { coverMesh } from "./CoverKit";
+import { loadTerrain } from "./Terrain";
 import { fovForAspect } from "../sim/player/CameraRig";
 import type { BoxDef, Material as MatName } from "../sim/world/types";
 import type { RuntimeBox } from "../sim/world/World";
@@ -303,6 +304,8 @@ export class SceneRenderer {
 
     const swap = new AssetSwap();
     this.buildEnvironment(swap);
+    // Open land around the level (made in Blender), out to the fog and the panorama.
+    void loadTerrain(scene, sim.chapter.id, sim.world.data, { low: tier.shadows === "blob", night, fogHex: sky.fog });
     const hc = this.settings().a11y.highContrast;
     const ines = hc ? { ...OUTFITS.ines, top: PALETTE.playerHigh, bottom: PALETTE.playerHigh } : OUTFITS.ines;
     this.player = this.makeFigure("player", ines, 1.8, true);

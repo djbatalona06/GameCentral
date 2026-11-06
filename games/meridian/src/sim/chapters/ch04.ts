@@ -13,7 +13,7 @@ export function buildCh04() {
   b.box([-60, -1, -14], [60, 0, 900], "sand");
 
   // --- 1. Caravan camp (stealth) ----------------------------------------------------------
-  b.box([-16, -1, -16], [16, 20, -12], "rock");
+  b.edgeCap([-16, -1, -16], [16, 20, -12], 1);
   b.walls(14, -14, 60);
   b.checkpoint("c1", [0, 0, -6], 0, "Caravan Camp");
   b.cache("ch04-crate-camp", [12, 0, -9]);
@@ -113,7 +113,7 @@ export function buildCh04() {
   b.box([-1.5, 9.4, 812], [1.5, 10, 830], "stone", { group: "wsbridge", hidden: true });
   // Cliff shrine.
   b.box([-12, 0, 830], [12, 10, 860], "rock");
-  b.box([-14, 0, 860], [14, 24, 864], "rock");
+  b.edgeCap([-14, 0, 860], [14, 24, 864], -1);
   b.checkpoint("c6", [0, 10, 836], 0, "Cliff Shrine");
   b.cache("ch04-crate-shrine", [8, 10, 852], "rare");
   b.trigger([-12, 10, 846], [12, 13, 850], "shrine");

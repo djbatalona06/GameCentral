@@ -108,6 +108,39 @@ try {
   await page.locator(".tc-jump").dispatchEvent("pointerup", { pointerId: 9, pointerType: "touch", bubbles: true });
   check("jump button jumps", jumped, `vy=${vy.toFixed(2)}`);
 
+  // 5b. Open maps and loot: the edge warns, a crate opens, a camp opens its screen.
+  const tapUse = async () => {
+    await page.locator(".tc-interact").dispatchEvent("pointerdown", { pointerId: 11, pointerType: "touch", bubbles: true });
+    await page.waitForTimeout(250);
+    await page.locator(".tc-interact").dispatchEvent("pointerup", { pointerId: 11, pointerType: "touch", bubbles: true });
+    await page.waitForTimeout(400);
+  };
+  await game(() => window.__meridian.sim.player.teleport({ x: -6.2, y: 0, z: -6 }, -Math.PI / 2));
+  await page.waitForFunction(() => window.__meridian.sim.nearBoundary === true, null, { timeout: 5000 }).catch(() => undefined);
+  check("walking up to the map edge warns", await game(() => window.__meridian.sim.nearBoundary === true));
+  await game(() => window.__meridian.sim.player.teleport({ x: 5.5, y: 0, z: -10.4 }, 0));
+  await page.waitForTimeout(400);
+  await tapUse();
+  await page.waitForTimeout(800);
+  const loot = await game(() => ({ open: window.__meridian.sim.interactsUsed.has("ch01-crate-beach"), salvage: window.__meridian.sim.economy.salvage }));
+  check("a crate opens and its loot is collected", loot.open && loot.salvage > 0, JSON.stringify(loot));
+  await shot("05b-ch01-crate");
+  await game(() => {
+    const s = window.__meridian.sim;
+    s.economy.salvage += 300;
+    s.player.teleport({ x: -5, y: 1, z: 68.4 }, 0);
+  });
+  await page.waitForTimeout(400);
+  await tapUse();
+  await page.waitForSelector('[data-screen="camp"]', { timeout: 5000 }).catch(() => undefined);
+  check("a camp opens the Buy / Craft / Upgrade screen", (await page.locator('[data-screen="camp"]').count()) === 1);
+  await shot("05c-ch01-camp");
+  if (await page.locator('[data-screen="camp"]').count()) {
+    await click('[data-tab="craft"]');
+    await click('[data-action="leave"]');
+  }
+  check("leaving camp goes back to play", await game(() => window.__meridian.sim.camp === null));
+
   // 6. Checkpoint autosave and Continue after reload.
   await game(() => {
     const s = window.__meridian.sim;

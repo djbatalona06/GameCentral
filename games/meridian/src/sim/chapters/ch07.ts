@@ -11,7 +11,7 @@ export function buildCh07() {
 
   // --- 1. Container yard (searchlights) ---------------------------------------------------
   b.box([-22, -1, -16], [22, 0, 84], "metal", { ledges: ["n"] });
-  b.box([-22, -8, -20], [22, 26, -16], "rock");
+  b.edgeCap([-22, -8, -20], [22, 26, -16], 1);
   b.walls(20, -16, 84);
   b.checkpoint("c1", [0, 0, -8], 0, "Ironwood Yard");
   b.cache("ch07-crate-yard", [-18, 0, -12]);

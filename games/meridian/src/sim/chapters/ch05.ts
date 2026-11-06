@@ -13,7 +13,7 @@ export function buildCh05() {
 
   // --- 1. Snowfield approach (stealth) ----------------------------------------------------
   b.box([-30, -1, -14], [30, 0, 72], "snow");
-  b.box([-16, -8, -18], [16, 30, -14], "rock");
+  b.edgeCap([-16, -8, -18], [16, 30, -14], 1);
   b.walls(14, -14, 72);
   b.checkpoint("c1", [0, 0, -8], 0, "Saint Aurel Trail");
   b.cache("ch05-crate-trail", [11.5, 0, -10.5]);

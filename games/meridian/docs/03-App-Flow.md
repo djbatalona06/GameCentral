@@ -18,6 +18,7 @@ Boot
                                     ├─ Pause → Resume · Skip puzzle* · Journal · Settings · Restart checkpoint · Save & quit
                                     ├─ Cutscene (letterbox, Skip button)
                                     ├─ Story question (world waits; pick an answer) → back to Playing
+                                    ├─ Camp (USE at a tent; world waits; saves) → tabs Buy · Craft · Upgrade → Leave camp → back to Playing
                                     ├─ Death → Retry · Retry easier · Quit
                                     └─ Chapter complete → Results (stats, medals, "Because of you") → Quiet moment (optional talk) → Next chapter · Replay · Menu
 ```
