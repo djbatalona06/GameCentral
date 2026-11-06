@@ -30,6 +30,7 @@ const x = (v: number) => `${v.toFixed(2)}x`;
 
 export const OPTIONS: Option[] = [
   // Accessibility: vision
+  { tab: "a11y", section: "Health", label: "Health bars", type: "toggle", get: (s) => s.a11y.healthBars, set: (s, v) => (s.a11y.healthBars = v as boolean) },
   { tab: "a11y", section: "Text & subtitles", label: "Text size", type: "slider", min: 0.8, max: 1.6, step: 0.05, format: x, get: (s) => s.a11y.textScale, set: (s, v) => (s.a11y.textScale = v as number) },
   { tab: "a11y", label: "Subtitles", type: "toggle", get: (s) => s.a11y.subtitles, set: (s, v) => (s.a11y.subtitles = v as boolean) },
   { tab: "a11y", label: "Subtitle size", type: "select", options: [{ value: "small", label: "Small" }, { value: "medium", label: "Medium" }, { value: "large", label: "Large" }, { value: "xl", label: "Extra large" }], get: (s) => s.a11y.subtitleSize, set: (s, v) => (s.a11y.subtitleSize = v as Settings["a11y"]["subtitleSize"]) },

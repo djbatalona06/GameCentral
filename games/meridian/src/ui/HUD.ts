@@ -4,7 +4,7 @@ import hudHtml from "./screens/hud.html?raw";
 import { TUNING } from "../config/tuning";
 import type { Settings } from "../core/Settings";
 import { WEAPONS, currentSpread, defOf } from "../sim/combat/weapons";
-import { RESOURCE_NAMES, type Resource } from "../sim/loot/items";
+import { PLATE_ARMOR, RESOURCE_NAMES, type Resource } from "../sim/loot/items";
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, yawOf, sub } from "../sim/math";
 import type { Speaker } from "../sim/story/types";
@@ -26,6 +26,13 @@ const SPEAKER_COLORS: Record<Speaker, string> = {
 };
 
 const TOUCH_LABELS: Record<"interact" | "melee" | "jump", string> = { interact: "Use", melee: "Melee", jump: "Jump" };
+
+/** Health colour: green when healthy, through yellow, to red when nearly out. */
+export function hpColor(frac: number): string {
+  const f = Math.max(0, Math.min(1, frac));
+  const hue = Math.round(f * 125); // 0 = red, 125 = green
+  return `hsl(${hue}, 72%, ${f < 0.3 ? 55 : 48}%)`;
+}
 
 export class HUD {
   readonly el: HTMLElement;
@@ -282,6 +289,25 @@ export class HUD {
     // Health: red vignette grows as health drops.
     const hpFrac = sim.health.hp / sim.health.max;
     this.q("vignette").style.opacity = String(Math.max(0, Math.min(1, (1 - hpFrac) * 1.3 - 0.1)));
+    // The hero's health bar (and field plate), plus a boss bar while a boss is fighting.
+    const bars = s.a11y.healthBars && !sim.cutscene;
+    const hb = this.q("health");
+    hb.classList.toggle("hidden", !bars);
+    if (bars) {
+      const pct = Math.round(Math.max(0, Math.min(1, hpFrac)) * 100);
+      this.q("hp-fill").style.width = `${pct}%`;
+      hb.style.setProperty("--hp-color", hpColor(hpFrac));
+      this.q("hp-plate").style.width = `${Math.round(Math.min(1, sim.armor / PLATE_ARMOR) * 100)}%`;
+      this.q("hp-text").textContent = sim.armor > 0 ? `Health ${pct} · Plate ${Math.round(sim.armor)}` : `Health ${pct}`;
+      hb.setAttribute("aria-valuenow", String(pct));
+      hb.classList.toggle("low", hpFrac < 0.3 && !sim.dead);
+    }
+    const boss = bars ? sim.enemies.find((e) => e.alive && e.def.role === "boss" && e.aware) : undefined;
+    this.q("boss").classList.toggle("show", !!boss);
+    if (boss) {
+      this.q("boss-fill").style.width = `${Math.round((boss.hp / boss.def.hp) * 100)}%`;
+      this.q("boss-name").textContent = boss.def.name;
+    }
 
     // Reticle reflects spread, enemy-under-reticle and scope.
     const w = sim.activeWeapon();

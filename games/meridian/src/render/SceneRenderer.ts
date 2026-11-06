@@ -20,6 +20,7 @@ import "@babylonjs/core/Rendering/depthRendererSceneComponent";
 import "@babylonjs/core/Rendering/geometryBufferRendererSceneComponent";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
@@ -64,6 +65,10 @@ interface EnemyVisual {
   fig: Figure;
   meter: Mesh;
   meterMat: StandardMaterial;
+  /** Health bar over the head: a dark back plate and a coloured fill (billboarded together). */
+  hpRoot: TransformNode;
+  hpFill: Mesh;
+  hpMat: StandardMaterial;
   laser: Mesh;
   last: Vector3;
   speed: number;
@@ -73,6 +78,7 @@ interface PursuerVisual {
   jeep: Mesh;
   gunner: Figure;
   driver: Figure;
+  hp: { root: TransformNode; fill: Mesh; mat: StandardMaterial };
 }
 
 interface Fx {
@@ -121,6 +127,7 @@ export class SceneRenderer {
   /** Loot crates: the lid tips open once looted. */
   private cacheLids = new Map<string, Mesh>();
   private dropMats = new Map<string, StandardMaterial>();
+  private hpBackMat: StandardMaterial | null = null;
   private pillarFaces = new Map<string, StandardMaterial>();
   private ropeMeshes = new Map<string, Mesh>();
   private player: Figure | null = null;
@@ -711,7 +718,24 @@ export class SceneRenderer {
     lm.disableLighting = true;
     laser.material = lm;
     laser.setEnabled(false);
-    ev = { fig, meter, meterMat, laser, last: v(e.pos), speed: 0 };
+    const hpRoot = new TransformNode(`hp-${e.id}`, scene);
+    hpRoot.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    const back = MeshBuilder.CreatePlane(`hpBack-${e.id}`, { width: 0.74, height: 0.1 }, scene);
+    back.parent = hpRoot;
+    back.material = this.hpBackMat ??= (() => {
+      const m = flatMaterial(scene, "hpBack", "#000000", { emissive: 0, alpha: 0.6 });
+      m.disableLighting = true;
+      return m;
+    })();
+    const hpMat = flatMaterial(scene, `hpFill-${e.id}`, "#3ecf8e", { emissive: 1 });
+    hpMat.disableLighting = true;
+    const hpFill = MeshBuilder.CreatePlane(`hpFill-${e.id}`, { width: 0.7, height: 0.065 }, scene);
+    hpFill.parent = hpRoot;
+    hpFill.position.z = -0.002; // just in front of the back plate
+    hpFill.material = hpMat;
+    for (const m of [back, hpFill]) m.isPickable = false;
+    hpRoot.setEnabled(false);
+    ev = { fig, meter, meterMat, hpRoot, hpFill, hpMat, laser, last: v(e.pos), speed: 0 };
     this.enemies.set(e.id, ev);
     return ev;
   }
@@ -888,6 +912,7 @@ export class SceneRenderer {
       const f = ev.fig;
       if (!e.alive && e.deadTime > 10) {
         f.setEnabled(false);
+        ev.hpRoot.setEnabled(false);
         ev.meter.setEnabled(false);
         ev.laser.setEnabled(false);
         continue;
@@ -921,6 +946,18 @@ export class SceneRenderer {
       if (tagged) {
         f.mesh.outlineColor.copyFromFloats(1, 0.85, 0.2);
         f.mesh.outlineWidth = 0.03;
+      }
+      // Health bar: once an enemy is fighting or hurt, nearby, and the setting is on.
+      const frac = Math.max(0, e.hp / e.def.hp);
+      const showHp = e.alive && this.settings().a11y.healthBars && !sim.cutscene && (e.aware || frac < 0.999) && Vector3.Distance(now, camPos) < 45;
+      ev.hpRoot.setEnabled(showHp);
+      if (showHp) {
+        ev.hpRoot.position.set(ep.x, ep.y + e.def.height + 0.6, ep.z);
+        ev.hpFill.scaling.x = Math.max(0.001, frac);
+        ev.hpFill.position.x = -0.35 * (1 - frac);
+        const c = Color3.FromHSV(frac * 125, 0.75, frac < 0.3 ? 1 : 0.85);
+        ev.hpMat.emissiveColor.copyFrom(c);
+        ev.hpMat.diffuseColor.copyFrom(c);
       }
       // Suspicion meter above the head.
       const showMeter = e.alive && ((e.suspicion > 0.05 && !e.aware) || (e.aware && e.sinceSeen < 1.5 && e.reactTimer > 0));
@@ -976,6 +1013,8 @@ export class SceneRenderer {
       pv.jeep.setEnabled(show);
       pv.gunner.setEnabled(show);
       pv.driver.setEnabled(show);
+      // Enemy jeeps get a wider health bar above them.
+      this.setHpBar(pv.hp, 1.2, { x: pu.pos.x, y: pu.pos.y + 3.4, z: pu.pos.z }, pu.hp / pu.def.hp, show && this.settings().a11y.healthBars);
       if (!show) continue;
       pv.jeep.position.set(pu.pos.x, pu.pos.y, pu.pos.z);
       pv.jeep.rotation.y = pu.yaw;
@@ -987,10 +1026,45 @@ export class SceneRenderer {
     }
   }
 
+  /** A billboarded health bar (dark back plate + coloured fill), hidden until shown. */
+  private makeHpBar(id: string, width: number): { root: TransformNode; fill: Mesh; mat: StandardMaterial } {
+    const scene = this.scene!;
+    const root = new TransformNode(`hp-${id}`, scene);
+    root.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    const back = MeshBuilder.CreatePlane(`hpBack-${id}`, { width: width + 0.04, height: 0.12 }, scene);
+    back.parent = root;
+    back.material = this.hpBackMat ??= (() => {
+      const m = flatMaterial(scene, "hpBack", "#000000", { emissive: 0, alpha: 0.6 });
+      m.disableLighting = true;
+      return m;
+    })();
+    const mat = flatMaterial(scene, `hpFill-${id}`, "#3ecf8e", { emissive: 1 });
+    mat.disableLighting = true;
+    const fill = MeshBuilder.CreatePlane(`hpFill-${id}`, { width, height: 0.08 }, scene);
+    fill.parent = root;
+    fill.position.z = -0.002;
+    fill.material = mat;
+    back.isPickable = fill.isPickable = false;
+    root.setEnabled(false);
+    return { root, fill, mat };
+  }
+
+  private setHpBar(bar: { root: TransformNode; fill: Mesh; mat: StandardMaterial }, width: number, at: V3, frac: number, show: boolean): void {
+    bar.root.setEnabled(show);
+    if (!show) return;
+    const f = Math.max(0, Math.min(1, frac));
+    bar.root.position.set(at.x, at.y, at.z);
+    bar.fill.scaling.x = Math.max(0.001, f);
+    bar.fill.position.x = -(width / 2) * (1 - f);
+    const c = Color3.FromHSV(f * 125, 0.75, f < 0.3 ? 1 : 0.85);
+    bar.mat.emissiveColor.copyFrom(c);
+    bar.mat.diffuseColor.copyFrom(c);
+  }
+
   private makePursuer(pu: Pursuer): PursuerVisual {
     const jeep = jeepMesh(this.scene!, `pjeep-${pu.def.id}`, "#7a3b22", true);
     this.shadows?.addShadowCaster(jeep);
-    const pv = { jeep, gunner: this.makeFigure(`pgun-${pu.def.id}`, OUTFITS.rifleman, 1.8), driver: this.makeFigure(`pdrv-${pu.def.id}`, OUTFITS.shotgunner, 1.8) };
+    const pv = { jeep, gunner: this.makeFigure(`pgun-${pu.def.id}`, OUTFITS.rifleman, 1.8), driver: this.makeFigure(`pdrv-${pu.def.id}`, OUTFITS.shotgunner, 1.8), hp: this.makeHpBar(`pursuer-${pu.def.id}`, 1.2) };
     this.pursuers.set(pu.def.id, pv);
     return pv;
   }
@@ -1434,6 +1508,7 @@ export class SceneRenderer {
     this.bellMeshes.clear();
     this.dropMeshes.clear();
     this.cacheLids.clear();
+    this.hpBackMat = null;
     this.dropMats.clear();
     this.pillarFaces.clear();
     this.ropeMeshes.clear();

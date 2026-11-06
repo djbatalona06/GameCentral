@@ -24,12 +24,19 @@
     <span class="purse" data-role="purse"></span>
   </div>
   <div class="click-to-look" data-role="click-to-look">Click to look around</div>
+  <!-- The hero's health (green to red) with any field-plate armour as a steel-blue strip on top. -->
+  <div class="health" data-role="health" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100">
+    <span class="hp-fill" data-role="hp-fill"></span>
+    <span class="hp-plate" data-role="hp-plate"></span>
+    <em data-role="hp-text"></em>
+  </div>
 
   <!-- Top of the screen, centre: everything here stacks downwards and never overlaps. -->
   <div class="top-stack">
     <div class="warning" data-role="warning" role="alert"></div>
     <div class="meter-bar spotted" data-role="spotted" aria-label="Searchlight exposure"><span data-role="spotted-fill"></span><em>Spotted</em></div>
     <div class="meter-bar jeep" data-role="jeep" aria-label="Jeep condition"><span data-role="jeep-fill"></span><em>Jeep</em></div>
+    <div class="meter-bar boss" data-role="boss" aria-label="Boss health"><span data-role="boss-fill"></span><em data-role="boss-name"></em></div>
     <div class="bell-caption" data-role="bell" aria-live="polite"></div>
     <div class="tutorial" data-role="tutorial" aria-live="polite"></div>
     <div class="hint" data-role="hint"></div>
