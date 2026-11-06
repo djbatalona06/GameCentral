@@ -332,6 +332,7 @@ export class TouchControls {
       // Walk mode halves the stick, which the player controller turns into a slow, quiet walk.
       const gain = this.walk ? 0.5 : 1;
       this.src.move = { x: (dx / R) * gain, y: (-dy / R) * gain };
+      this.src.walk = this.walk;
       this.stickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
     } else if (o.kind === "look") {
       this.src.look.yaw += (e.clientX - o.lx) * sens;

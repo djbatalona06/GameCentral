@@ -94,7 +94,14 @@ export function updateCamera(cam: CameraState, inp: CameraInput, world: World, d
   const wantDist = baseDist + (c.aimDistance - baseDist) * cam.aimBlend;
 
   const right = { x: Math.cos(cam.yaw), y: 0, z: -Math.sin(cam.yaw) };
-  const shoulder = (c.shoulderOffset + (c.aimShoulderOffset - c.shoulderOffset) * cam.aimBlend) * cam.shoulder;
+  let shoulder = (c.shoulderOffset + (c.aimShoulderOffset - c.shoulderOffset) * cam.aimBlend) * cam.shoulder;
+  // The shoulder offset is wider than the hero. With that shoulder against a wall the pivot would
+  // sit inside the wall (and the camera behind it), so pull it in toward her head first.
+  if (shoulder !== 0) {
+    const side = scale(right, Math.sign(shoulder));
+    const sideHit = world.raycast(pivotBase, side, Math.abs(shoulder) + c.collisionRadius, { ignoreCrates: false });
+    if (sideHit) shoulder = Math.sign(shoulder) * Math.max(0, sideHit.t - c.collisionRadius);
+  }
   cam.pivot = add(pivotBase, scale(right, shoulder));
 
   // Pull the camera in when a wall is between it and the player.

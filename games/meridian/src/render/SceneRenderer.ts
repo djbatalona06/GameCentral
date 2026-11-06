@@ -33,7 +33,7 @@ import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3, Vector4 } from "@babylonjs/core/Maths/math.vector";
 
 import type { GameSim, SimEvent } from "../sim/GameSim";
-import { lookDir, type V3 } from "../sim/math";
+import { angleDiff, lookDir, type V3 } from "../sim/math";
 import { fovForAspect } from "../sim/player/CameraRig";
 import type { BoxDef, Material as MatName } from "../sim/world/types";
 import type { RuntimeBox } from "../sim/world/World";
@@ -646,10 +646,30 @@ export class SceneRenderer {
 
   // ------------------------------------------------------------------ per-frame sync
 
-  render(dt: number): void {
+  /** How far between the last two sim ticks this frame is (0..1); see GameSim.prev. */
+  private alpha = 1;
+
+  /** Blends a position from the previous tick to now. Teleports (more than 3 m in a tick) snap. */
+  private lerpPos(prev: V3 | undefined, cur: V3): V3 {
+    if (!prev || !this.sim?.prev.valid || this.alpha >= 1) return cur;
+    const dx = cur.x - prev.x;
+    const dy = cur.y - prev.y;
+    const dz = cur.z - prev.z;
+    if (dx * dx + dy * dy + dz * dz > 9) return cur;
+    const a = this.alpha;
+    return { x: prev.x + dx * a, y: prev.y + dy * a, z: prev.z + dz * a };
+  }
+
+  private lerpYaw(prev: number, cur: number): number {
+    if (!this.sim?.prev.valid || this.alpha >= 1) return cur;
+    return cur - angleDiff(prev, cur) * (1 - this.alpha);
+  }
+
+  render(dt: number, alpha = 1): void {
     const sim = this.sim;
     const scene = this.scene;
     if (!sim || !scene || !this.camera || this.contextLost) return;
+    this.alpha = Math.max(0, Math.min(1, alpha));
     this.time += dt;
     this.syncWorld(dt);
     this.syncPlayer(dt);
@@ -756,8 +776,8 @@ export class SceneRenderer {
     f.setEnabled(visible || !!sim.cutscene);
     const speed = Math.hypot(p.vel.x, p.vel.z);
     let anim = this.playerAnim(p.mode, sim.aiming || sim.throwAiming, speed, p.grounded);
-    let pos: V3 = p.pos;
-    let yaw = p.yaw;
+    let pos: V3 = this.lerpPos(sim.prev.player, p.pos);
+    let yaw = this.lerpYaw(sim.prev.playerYaw, p.yaw);
     // In the jeep the figure sits in a seat (driving) or stands at the back (gunner).
     if (p.mode === "vehicle" && sim.vehicle && this.jeep) {
       const gunner = sim.vehicle.track.def.mode === "gunner";
@@ -800,15 +820,18 @@ export class SceneRenderer {
         ev.laser.setEnabled(false);
         continue;
       }
-      const now = this.tmpA.set(e.pos.x, e.pos.y, e.pos.z);
+      const ep = this.lerpPos(sim.prev.enemies.get(e.id), e.pos);
+      const pe = sim.prev.enemies.get(e.id);
+      const eyaw = pe ? this.lerpYaw(pe.yaw, e.yaw) : e.yaw;
+      const now = this.tmpA.set(ep.x, ep.y, ep.z);
       ev.speed = dt > 0 ? Math.min(8, Vector3.Distance(now, ev.last) / dt) : 0;
       ev.last.copyFrom(now);
       // Far-away characters hold their pose to save time on phones.
       if (Vector3.Distance(now, camPos) < this.tier.animDistance || !e.alive) {
         const anim: Anim = !e.alive ? "dead" : e.state === "stunned" ? "stunned" : e.state === "combat" && e.weapon && ev.speed < 0.5 ? "aim" : ev.speed > 0.3 ? "move" : "idle";
         f.update(dt, {
-          pos: e.pos,
-          yaw: e.yaw,
+          pos: ep,
+          yaw: eyaw,
           anim,
           speed: ev.speed,
           crouch: e.crouching ? 1 : 0,
@@ -831,7 +854,7 @@ export class SceneRenderer {
       const showMeter = e.alive && ((e.suspicion > 0.05 && !e.aware) || (e.aware && e.sinceSeen < 1.5 && e.reactTimer > 0));
       ev.meter.setEnabled(showMeter);
       if (showMeter) {
-        ev.meter.position.set(e.pos.x, e.pos.y + e.def.height + 0.35, e.pos.z);
+        ev.meter.position.set(ep.x, ep.y + e.def.height + 0.35, ep.z);
         const s = Math.min(1, e.suspicion);
         ev.meter.scaling.x = Math.max(0.05, s);
         if (e.aware) ev.meterMat.emissiveColor.copyFromFloats(1, 0.1, 0.1);
@@ -1271,10 +1294,11 @@ export class SceneRenderer {
       cam.fov = fovForAspect(0.9, this.engine.getAspectRatio(cam));
       return;
     }
-    const cp = sim.cam.position;
+    const cp = this.lerpPos(sim.prev.cam, sim.cam.position);
     const dip = this.juice?.dip ?? 0;
     cam.position.set(cp.x + jx, cp.y + jy - dip * 0.35, cp.z);
-    const dir = lookDir(sim.cam.yaw, sim.cam.pitch);
+    const pitch = this.alpha < 1 && sim.prev.valid ? sim.prev.camPitch + (sim.cam.pitch - sim.prev.camPitch) * this.alpha : sim.cam.pitch;
+    const dir = lookDir(this.lerpYaw(sim.prev.camYaw, sim.cam.yaw), pitch);
     cam.setTarget(this.tmpB.set(cam.position.x + dir.x, cam.position.y + dir.y, cam.position.z + dir.z));
     // A slightly wider view while sprinting gives a sense of speed (off with Reduce motion).
     cam.fov = fovForAspect(sim.cam.fov * (sim.aiming ? 1 : (this.juice?.fovMul ?? 1)), this.engine.getAspectRatio(cam));

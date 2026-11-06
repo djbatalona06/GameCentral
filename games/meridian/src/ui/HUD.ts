@@ -68,6 +68,11 @@ export class HUD {
     this.el.classList.toggle("hidden", !on);
   }
 
+  /** A short notice in the toast area (also used outside sim events, e.g. a new controller). */
+  notice(title: string, body = ""): void {
+    this.toast(title, body);
+  }
+
   private toast(title: string, body = ""): void {
     const t = document.createElement("div");
     t.className = "toast";

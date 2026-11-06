@@ -94,6 +94,8 @@ export interface PlayerAssists {
    * the mouse turns her and her gun, and A/D sidestep instead of turning.
    */
   faceCamera?: boolean;
+  /** Crouch only while the crouch button is held (the "Toggle crouch" setting turned off). */
+  holdCrouch?: boolean;
 }
 
 export class PlayerController {
@@ -261,12 +263,17 @@ export class PlayerController {
     this.inWater = !!water;
 
     if (this.grounded) {
-      if (b.crouch.pressed) this.tryCrouch(!this.crouched, world);
+      if (assists.holdCrouch) {
+        // Hold mode: keep trying to match the button (standing up waits for head room).
+        if (b.crouch.held !== this.crouched) this.tryCrouch(b.crouch.held, world);
+      } else if (b.crouch.pressed) this.tryCrouch(!this.crouched, world);
       const sprintHeld = b.sprint.held;
       // In shooter style you sprint forwards (or diagonally forwards), never backwards or sideways.
       const forwardEnough = !assists.faceCamera || input.move.y > 0.3;
-      this.sprinting = sprintHeld && wish.mag > 0.5 && forwardEnough && !aiming && !this.crouched && !this.inWater;
-      if (this.sprinting && this.crouched) this.tryCrouch(false, world);
+      const wantsSprint = sprintHeld && wish.mag > 0.5 && forwardEnough && !aiming && !this.inWater;
+      // Sprinting stands a crouched hero up (if there is head room), then she runs.
+      if (wantsSprint && this.crouched && !(assists.holdCrouch && b.crouch.held)) this.tryCrouch(false, world);
+      this.sprinting = wantsSprint && !this.crouched;
     } else {
       this.sprinting = false;
     }
@@ -367,6 +374,7 @@ export class PlayerController {
     // Swimming in deep water.
     if (water && this.pos.y < water.max.y - 1.15) {
       this.mode = "swim";
+      this.coyote = 0; // coyote time is for walking off ground, not for letting go of a hold
       this.vel.y = 0;
       this.crouched = false;
       this.height = P.height;
@@ -498,6 +506,7 @@ export class PlayerController {
     this.ledge = l;
     this.ledgeT = t;
     this.mode = "hang";
+    this.coyote = 0; // coyote time is for walking off ground, not for letting go of a hold
     this.vel = v3();
     this.grounded = false;
     this.crouched = false;
@@ -682,6 +691,7 @@ export class PlayerController {
     this.wall = null;
     this.mode = "air";
     this.grounded = false;
+    this.coyote = 0;
     this.regrabCooldown = C.regrabCooldown;
   }
 
@@ -703,6 +713,7 @@ export class PlayerController {
       if (fromGround && !facing) continue;
       this.wall = w;
       this.mode = "wall";
+      this.coyote = 0; // coyote time is for walking off ground, not for letting go of a hold
       this.vel = v3();
       this.grounded = false;
       this.yaw = yawOf(scale(n, -1));
@@ -812,6 +823,7 @@ export class PlayerController {
     const hand = add(this.pos, { x: 0, y: C.handHeight, z: 0 });
     this.rope = { def: r, length: Math.min(length, r.grapple ? T.grappleRange : r.length), hand, vel: { ...this.vel } };
     this.mode = "rope";
+    this.coyote = 0; // coyote time is for walking off ground, not for letting go of a hold
     this.grounded = false;
     this.cover = null;
     this.emit("rope");
@@ -874,6 +886,7 @@ export class PlayerController {
       if (t < 0.95 && dist(point, hand) < T.ziplineGrab) {
         this.zip = { def: z, t };
         this.mode = "zip";
+        this.coyote = 0; // coyote time is for walking off ground, not for letting go of a hold
         this.grounded = false;
         this.emit("zip");
         return true;

@@ -120,6 +120,7 @@ export class Game {
     this.input = new InputManager(s);
     this.keyboard = new KeyboardMouse(this.input.keyboard, canvas, s);
     this.gamepad = new GamepadInput(this.input.gamepad, s);
+    this.gamepad.onNonStandard = () => this.hud.notice("Controller connected", "Its buttons use an unusual layout. You can remap them in Settings, Controls.");
     this.touch = new TouchControls(this.input.touch, s, document.getElementById("touch-root")!);
     this.touch.show(false);
     this.touch.onLayoutChanged = () => this.settingsChanged();
@@ -168,7 +169,10 @@ export class Game {
     document.body.classList.add(`layout-${s.controls.touchLayout}`);
     this.audio.applyVolumes();
     this.renderer.applyAccessibility();
-    if (this.sim) Object.assign(this.sim.opts, s.gameplay);
+    if (this.sim) {
+      Object.assign(this.sim.opts, s.gameplay);
+      this.sim.holdCrouch = !s.controls.toggleCrouch;
+    }
     this.sim?.squad.setDifficulty(s.gameplay.difficulty);
   }
 
@@ -190,7 +194,17 @@ export class Game {
     window.addEventListener("pointerdown", unlock, { passive: true });
     window.addEventListener("keydown", unlock);
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden && this.state === "playing") this.pause();
+      if (!document.hidden) return;
+      this.keyboard.releaseAll();
+      this.input.reset();
+      if (this.state === "playing") this.pause();
+    });
+    // Switching to another window: keys released over there never send a keyup here (Cmd+Tab on a
+    // Mac is the classic case), so let go of everything and pause instead of running on with W stuck.
+    window.addEventListener("blur", () => {
+      this.keyboard.releaseAll();
+      this.input.reset();
+      if (this.state === "playing" && this.inputMode === "desktop") this.pause();
     });
     // Landscape only: a phone held upright is covered by a "turn your phone" prompt (index.html, base.css).
     // Pause behind it, and carry on by itself when the phone is turned back. Computers are not affected.
@@ -602,6 +616,7 @@ export class Game {
     // A chapter that is already finished keeps the answers given the first time (nothing is counted twice).
     const replaying = !!this.save?.chapters[ch.id]?.completed;
     this.sim = new GameSim(ch, { ...this.settings.gameplay }, snapshot ?? undefined, Date.now() & 0xffff, this.save?.story, replaying);
+    this.sim.holdCrouch = !this.settings.controls.toggleCrouch;
     this.lastSnapshot = snapshot ?? this.sim.snapshot();
     this.renderer.load(this.sim);
     this.hud.reset();
@@ -1150,7 +1165,9 @@ export class Game {
     if (!this.renderer.shouldRender(t)) return;
     const renderDt = this.lastRenderTime ? Math.min(0.1, (t - this.lastRenderTime) / 1000) : dt;
     this.lastRenderTime = t;
-    this.renderer.render(renderDt);
+    // Draw between the last two sim ticks: smooth motion on 90-144 Hz screens and uneven frames.
+    const alpha = sim && this.state === "playing" && this.hitStop <= 0 ? this.acc * TUNING.sim.hz : 1;
+    this.renderer.render(renderDt, alpha);
   };
 
   /**

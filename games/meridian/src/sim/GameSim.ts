@@ -700,8 +700,47 @@ export class GameSim {
 
   // ---------------------------------------------------------------- main step
 
+  /**
+   * Where things were at the start of the latest tick. The renderer draws a blend between this and
+   * the current state, so motion is smooth on screens faster than the 60 Hz simulation.
+   */
+  readonly prev = {
+    player: { x: 0, y: 0, z: 0 },
+    playerYaw: 0,
+    cam: { x: 0, y: 0, z: 0 },
+    camYaw: 0,
+    camPitch: 0,
+    enemies: new Map<string, { x: number; y: number; z: number; yaw: number }>(),
+    valid: false,
+  };
+
+  private capturePrev(): void {
+    const pr = this.prev;
+    const p = this.player;
+    pr.player.x = p.pos.x;
+    pr.player.y = p.pos.y;
+    pr.player.z = p.pos.z;
+    pr.playerYaw = p.yaw;
+    pr.cam.x = this.cam.position.x;
+    pr.cam.y = this.cam.position.y;
+    pr.cam.z = this.cam.position.z;
+    pr.camYaw = this.cam.yaw;
+    pr.camPitch = this.cam.pitch;
+    for (const e of this.enemies) {
+      const o = pr.enemies.get(e.id);
+      if (o) {
+        o.x = e.pos.x;
+        o.y = e.pos.y;
+        o.z = e.pos.z;
+        o.yaw = e.yaw;
+      } else pr.enemies.set(e.id, { x: e.pos.x, y: e.pos.y, z: e.pos.z, yaw: e.yaw });
+    }
+    pr.valid = true;
+  }
+
   step(dt: number, input: InputFrame): void {
     if (this.completed) return;
+    this.capturePrev();
     if (this.pendingChoice) {
       // The world waits while the player answers.
       this.tickChoice(dt);
@@ -771,7 +810,9 @@ export class GameSim {
 
     if (riding) this.updateVehicle(dt, input);
     else {
-      p.update(dt, input, this.cam.yaw, this.world, this.aiming, { autoTraversal: this.opts.autoTraversal, holdToToggle: false, faceCamera: this.faceCamera(input) });
+      // Move relative to where the camera is about to look this tick, not where it looked last tick.
+      const moveYaw = this.cam.yaw + lookYaw;
+      p.update(dt, input, moveYaw, this.world, this.aiming, { autoTraversal: this.opts.autoTraversal, holdToToggle: false, faceCamera: this.faceCamera(input), holdCrouch: this.holdCrouch });
       this.applyWind(dt);
     }
     for (const ev of p.events) this.onPlayerEvent(ev);
@@ -842,6 +883,9 @@ export class GameSim {
   }
 
   /** Shooter style: keyboard-and-mouse players turn the hero with the mouse. */
+  /** Controls setting: crouch while the button is held (false = press to toggle). Set by the game. */
+  holdCrouch = false;
+
   private faceCamera(input: InputFrame): boolean {
     return input.device === "keyboard" && this.opts.desktopStyle === "shooter";
   }
@@ -873,8 +917,9 @@ export class GameSim {
     const t = Math.min(1, cs.t / shot.duration);
     const e = t * t * (3 - 2 * t);
     this.cam.rail = { position: add(shot.from, scale(sub(shot.to, shot.from), e)), target: shot.target };
-    if (input.buttons.pause.pressed || input.buttons.jump.pressed) {
+    if (input.buttons.jump.pressed) {
       // Skipping is handled by the UI's "hold to skip"; jump advances to the next shot.
+      // (Pause opens the pause menu as usual; the game catches it before the sim steps.)
       cs.t = shot.duration;
     }
     if (cs.t >= shot.duration) {
@@ -1745,7 +1790,11 @@ export class GameSim {
   private updateVehicle(dt: number, input: InputFrame): void {
     const v = this.vehicle!;
     const p = this.player;
-    const evs = stepVehicle(v, { steer: input.move.x, throttle: input.move.y, boost: input.buttons.sprint.held }, this.world, dt, this.time);
+    // Walk mode halves the stick for walking; the jeep always gets full steering and throttle.
+    const k = input.walk ? 2 : 1;
+    const steer = clamp(input.move.x * k, -1, 1);
+    const throttle = clamp(input.move.y * k, -1, 1);
+    const evs = stepVehicle(v, { steer, throttle, boost: input.buttons.sprint.held }, this.world, dt, this.time);
     const at = trackAt(v.track, v.s);
     p.pos = seatPos(v);
     p.vel = scale(at.dir, v.speed);

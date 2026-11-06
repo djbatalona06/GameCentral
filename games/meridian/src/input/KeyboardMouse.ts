@@ -23,6 +23,41 @@ const BLOCKED_IN_PLAY = new Set(["Space", "Tab", "AltLeft", "AltRight", ...Objec
 
 /** Biggest mouse jump accepted in one event. Some browsers send a huge spike when the lock starts. */
 export const MAX_MOUSE_STEP = 200;
+/** With raw (unaccelerated) input the spike bug does not happen, so fast flicks are allowed through. */
+export const MAX_MOUSE_STEP_RAW = 800;
+
+/** How far the wheel must turn (in pixels) to count as one weapon swap, and the gap between swaps. */
+export const WHEEL_NOTCH = 50;
+export const WHEEL_COOLDOWN_MS = 150;
+export const WHEEL_GESTURE_GAP_MS = 200;
+
+/**
+ * Turns a stream of wheel events into whole "notches". Trackpads and smooth-scrolling wheels send
+ * many small events for one flick; without this the weapon would flip back and forth.
+ * Returns the number of swaps to perform for this event (0 or 1).
+ */
+export class WheelNotches {
+  private acc = 0;
+  private lastEvent = -Infinity;
+  private lastSwap = -Infinity;
+  private swapped = false;
+  feed(deltaY: number, deltaMode: number, now: number): number {
+    const px = deltaMode === 1 ? deltaY * 40 : deltaMode === 2 ? deltaY * 400 : deltaY;
+    // Events closer together than this belong to one flick (a "gesture").
+    if (now - this.lastEvent > WHEEL_GESTURE_GAP_MS) {
+      this.acc = 0;
+      this.swapped = false;
+    }
+    this.lastEvent = now;
+    // With two weapons, one swap per flick is what the player means.
+    if (this.swapped) return 0;
+    this.acc += px;
+    if (Math.abs(this.acc) < WHEEL_NOTCH || now - this.lastSwap < WHEEL_COOLDOWN_MS) return 0;
+    this.swapped = true;
+    this.lastSwap = now;
+    return 1;
+  }
+}
 
 /** Turns the keys held down into a movement stick value (x = right, y = forward). */
 export function moveFromKeys(down: Iterable<string>): { x: number; y: number } {
@@ -46,11 +81,12 @@ export function moveFromKeys(down: Iterable<string>): { x: number; y: number } {
   return { x: (x / l) * k, y: (y / l) * k };
 }
 
-export const clampMouseStep = (v: number): number => Math.max(-MAX_MOUSE_STEP, Math.min(MAX_MOUSE_STEP, v));
+export const clampMouseStep = (v: number, max = MAX_MOUSE_STEP): number => Math.max(-max, Math.min(max, v));
 
 export class KeyboardMouse {
   private down = new Set<string>();
   private lastTouch = -Infinity;
+  private wheel = new WheelNotches();
   /** When true, mouse movement turns the camera (desktop play). */
   pointerLookEnabled = false;
   /** True while a chapter is being played (menus closed). */
@@ -67,8 +103,10 @@ export class KeyboardMouse {
     window.addEventListener("mousemove", this.onMouseMove);
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     canvas.addEventListener("wheel", (e) => {
-      if (this.pointerLookEnabled) this.src.tapped.add("swapWeapon");
+      // Only during play: in menus the wheel must not change weapons behind the player's back.
+      if (!this.playing) return;
       e.preventDefault();
+      if (this.pointerLookEnabled && this.wheel.feed(e.deltaY, e.deltaMode, performance.now())) this.src.tapped.add("swapWeapon");
     }, { passive: false });
     // Only a real mouse or pen counts as "desktop": touchscreens also send pretend mouse clicks.
     window.addEventListener("pointerdown", (e) => {
@@ -88,6 +126,7 @@ export class KeyboardMouse {
 
   private updateMove(): void {
     this.src.move = moveFromKeys(this.down);
+    this.src.walk = this.down.has("AltLeft") || this.down.has("AltRight");
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -122,9 +161,25 @@ export class KeyboardMouse {
     const raw = this.settings().controls.rawMouse;
     try {
       const r = c.requestPointerLock(raw ? { unadjustedMovement: true } : undefined);
-      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => (raw ? c.requestPointerLock() : undefined));
+      if (r && typeof (r as Promise<void>).catch === "function") {
+        (r as Promise<void>).catch(() => {
+          // Raw input unsupported, or the browser's short cooldown after Escape. Try once more
+          // without options; if that is refused too, the next click will ask again.
+          if (!raw) return;
+          try {
+            const again = c.requestPointerLock();
+            if (again && typeof (again as Promise<void>).catch === "function") (again as Promise<void>).catch(() => undefined);
+          } catch {
+            /* the next click asks again */
+          }
+        });
+      }
     } catch {
-      c.requestPointerLock();
+      try {
+        c.requestPointerLock();
+      } catch {
+        /* the next click asks again */
+      }
     }
   }
 
@@ -149,16 +204,19 @@ export class KeyboardMouse {
   private onMouseMove = (e: MouseEvent) => {
     if (!this.pointerLookEnabled || !this.locked) return;
     const s = TUNING.camera.mouseSensitivity;
+    const max = this.settings().controls.rawMouse ? MAX_MOUSE_STEP_RAW : MAX_MOUSE_STEP;
     // Mouse right turns right, mouse up looks up.
-    this.src.look.yaw += clampMouseStep(e.movementX) * s;
-    this.src.look.pitch -= clampMouseStep(e.movementY) * s;
+    this.src.look.yaw += clampMouseStep(e.movementX, max) * s;
+    this.src.look.pitch -= clampMouseStep(e.movementY, max) * s;
     this.src.active = true;
   };
 
   releaseAll(): void {
     this.down.clear();
     this.src.held.clear();
+    this.src.tapped.clear();
     this.src.move = { x: 0, y: 0 };
+    this.src.walk = false;
   }
 
   exitPointerLock(): void {

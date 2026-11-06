@@ -16,6 +16,9 @@ export const deadzone = (x: number, y: number, dz: number): [number, number] => 
 export class GamepadInput {
   private prevPressed = new Set<number>();
   connected = false;
+  /** Called once when a controller without the standard button layout is first seen. */
+  onNonStandard: ((id: string) => void) | null = null;
+  private warned = new Set<string>();
   /** Raw button edges for menu navigation (index -> pressed this frame). */
   menuPressed = new Set<number>();
   menuAxis = { x: 0, y: 0 };
@@ -35,8 +38,22 @@ export class GamepadInput {
   update(dt: number): void {
     const p = this.pad();
     this.menuPressed.clear();
-    if (!p) return;
+    if (!p) {
+      // Unplugged (or the battery died): let go of everything, or the last stick angle and any
+      // held buttons would stay stuck down forever.
+      if (this.prevPressed.size || this.src.held.size || this.src.move.x || this.src.move.y) {
+        this.src.held.clear();
+        this.src.move = { x: 0, y: 0 };
+      }
+      this.prevPressed.clear();
+      this.menuAxis = { x: 0, y: 0 };
+      return;
+    }
     this.connected = true;
+    if (p.mapping !== "standard" && !this.warned.has(p.id)) {
+      this.warned.add(p.id);
+      this.onNonStandard?.(p.id);
+    }
     const bindings = this.settings().controls.pad;
     const pressedNow = new Set<number>();
     p.buttons.forEach((b, i) => {
