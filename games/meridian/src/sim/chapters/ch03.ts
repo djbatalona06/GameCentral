@@ -6,13 +6,15 @@ import { LevelBuilder } from "../world/LevelBuilder";
 import type { ChapterScript } from "../story/types";
 
 export function buildCh03() {
-  const b = new LevelBuilder("ch03", { top: "#a7c8c4", bottom: "#d9e6c3", fog: "#b4ccb0", fogDensity: 0.012 });
+  const b = new LevelBuilder("ch03", { top: "#a7c8c4", bottom: "#d9e6c3", fog: "#b4ccb0", fogDensity: 0.012 }).openWorld();
 
   // --- 1. Jungle path (stealth) -----------------------------------------------------------
   b.box([-12, -8, -16], [12, 26, -12], "rock");
   b.walls(10, -14, 44);
   b.box([-10, -1, -12], [10, 0, 44], "ground");
   b.checkpoint("c1", [0, 0, -6], 0, "Serra Verde Trail");
+  b.cache("ch03-crate-trail", [8.4, 0, -9]);
+  b.pocket("ch03-edge-trail", "w", -10, 0, 12, 12, 0, "ground");
   b.grass([-10, 0, 0], [-4, 1.5, 14]);
   b.grass([4, 0, 6], [10, 1.5, 20]);
   b.grass([-6, 0, 24], [2, 1.5, 32]);
@@ -43,6 +45,8 @@ export function buildCh03() {
 
   // --- 3. Pillar puzzle -------------------------------------------------------------------
   b.checkpoint("c2", [0, 8, 47], 0, "Temple Terrace");
+  b.camp("ch03-camp-terrace", [-6.5, 8, 46.5], "the Temple Terrace");
+  b.pocket("ch03-edge-terrace", "e", 10, 52, 66, 10, 8, "stone");
   b.interact("carving", [0, 9.4, 50.5], "examine", "Read the carving", "carving", { once: false });
   b.block(0, 51, 4, 0.6, 8, 10.5, "stone");
   b.interact("pillar_l", [-5, 9, 57.2], "pillar", "Turn the left pillar", "pillar", { once: false });
@@ -61,6 +65,8 @@ export function buildCh03() {
   b.trigger([-1.5, 8, 76], [1.5, 10, 78], "bridge_run");
   b.box([-10, 1, 100], [10, 8, 130], "stone", { ledges: ["s"] });
   b.checkpoint("c4", [0, 8, 108], 0, "Far Ledge");
+  b.camp("ch03-camp-ledge", [6, 8, 110], "the Far Ledge");
+  b.cache("ch03-crate-ledge", [-8, 8, 104], "rare");
 
   // --- 5. Grapple gap ---------------------------------------------------------------------
   b.rope([0, 15, 134.5], 0, true);
@@ -92,6 +98,8 @@ export function buildCh03() {
   b.pickup([0, 8.3, 176], "ammo", 30);
   b.treasure("ch03-codex", [-12.5, 8.4, 182], "Ordaz Logbook Page", "A torn page in Catalina's hand: 'Three keys for three seas. The first lies sleeping in green stone.'");
   b.arena("vault", [-14, 7, 139], [14, 12, 186]);
+  b.pocket("ch03-edge-vault", "w", -14, 160, 176, 10, 8, "stone");
+  b.cache("ch03-crate-vault", [12.4, 8, 150]);
   b.enemy("lieutenant", [0, 8, 180], 180, "vault", { wave: "boss1", alerted: true });
   b.enemy("rifleman", [-8, 8, 181], 180, "vault", { wave: "boss1", alerted: true });
   b.enemy("rifleman", [8, 8, 181], 180, "vault", { wave: "boss1", alerted: true });

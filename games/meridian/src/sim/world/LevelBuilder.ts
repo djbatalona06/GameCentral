@@ -23,9 +23,33 @@ const v = (a: Vec): V3 => ({ x: a[0], y: a[1], z: a[2] });
 
 type BoxOpts = Partial<Omit<BoxDef, "id" | "min" | "max" | "material">>;
 
+/** A side of the playable area: an invisible barrier, drawn as a low rock lip you can see over. */
+interface EdgeDef {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+  y0: number;
+  y1: number;
+  /** +1 when the play area is on the +X side of this edge, -1 when it is on the -X side. */
+  inward: 1 | -1;
+  material: Material;
+}
+
+/** Height of the visible rock lip above the local floor: low enough to see the land beyond. */
+export const LIP_HEIGHT = 1.1;
+
 export class LevelBuilder {
   private n = 0;
   readonly data: LevelData;
+  /**
+   * Open-world mode: `walls()` no longer builds 34 m canyon walls. Each side becomes an invisible
+   * barrier (same place, so no route shortcuts) drawn as a low lip of rock, and the Blender
+   * terrain and sky carry the view out to the horizon.
+   */
+  private open = false;
+  private edges: EdgeDef[] = [];
+  private openings: Array<{ inward: 1 | -1; x: number; z0: number; z1: number }> = [];
 
   constructor(id: string, sky: LevelData["sky"], killY = -30) {
     this.data = {
@@ -286,11 +310,93 @@ export class LevelBuilder {
     return this;
   }
 
-  /** @deprecated Canyon walls. Act I now uses `bounds()` and open ground; kept for test levels. */
-  walls(halfWidth: number, z0: number, z1: number, y0 = -8, y1 = 26): this {
-    this.box([-halfWidth - 2, y0, z0], [-halfWidth, y1, z1], "rock");
-    this.box([halfWidth, y0, z0], [halfWidth + 2, y1, z1], "rock");
+  /** Turns on open-world edges for this level (see `open`). Act I chapters call this first. */
+  openWorld(): this {
+    this.open = true;
     return this;
+  }
+
+  /**
+   * The two sides of a corridor running along Z. In open-world mode they are invisible barriers
+   * with a low rock lip; otherwise (test levels) they are the old tall rock walls.
+   */
+  walls(halfWidth: number, z0: number, z1: number, y0 = -8, y1 = 26, material: Material = "rock"): this {
+    this.edgeWall(-halfWidth - 2, -halfWidth, z0, z1, 1, y0, y1, material);
+    this.edgeWall(halfWidth, halfWidth + 2, z0, z1, -1, y0, y1, material);
+    return this;
+  }
+
+  /** One side wall from x0 to x1 (thin in X) along z0..z1; `inward` points at the play area. */
+  edgeWall(x0: number, x1: number, z0: number, z1: number, inward: 1 | -1, y0 = -8, y1 = 26, material: Material = "rock"): this {
+    if (!this.open) return this.box([x0, y0, z0], [x1, y1, z1], material);
+    this.edges.push({ x0, x1, z0, z1, y0, y1, inward, material });
+    return this;
+  }
+
+  /**
+   * A side pocket: the edge on one side opens up into an extra patch of ground with a boundary
+   * cache (and its marker) at the far end. Pockets are dead ends, so they never skip a climb.
+   * `edgeX` is the inner face of that side's edge; `floorY` must match the corridor floor there.
+   */
+  pocket(id: string, side: "w" | "e", edgeX: number, z0: number, z1: number, depth: number, floorY: number, material: Material = "ground"): this {
+    const inward: 1 | -1 = side === "w" ? 1 : -1;
+    const sign = side === "w" ? -1 : 1;
+    this.openings.push({ inward, x: edgeX, z0, z1 });
+    const far = edgeX + sign * (depth + 2);
+    const xa = Math.min(edgeX, far);
+    const xb = Math.max(edgeX, far);
+    this.box([xa, floorY - 3, z0], [xb, floorY, z1], material);
+    // Edges around the pocket: the far side (with a lip) and both ends.
+    const outer: [number, number] = side === "w" ? [xa - 2, xa] : [xb, xb + 2];
+    this.edges.push({ x0: outer[0], x1: outer[1], z0: z0 - 2, z1: z1 + 2, y0: floorY - 10, y1: floorY + 30, inward, material: "rock" });
+    this.box([xa, floorY - 40, z0 - 2], [xb, floorY + 150, z0], "rock", { boundary: true });
+    this.box([xa, floorY - 40, z1], [xb, floorY + 150, z1 + 2], "rock", { boundary: true });
+    this.box([xa, floorY - 3, z0 - 2], [xb, floorY + LIP_HEIGHT, z0], "rock");
+    this.box([xa, floorY - 3, z1], [xb, floorY + LIP_HEIGHT, z1 + 2], "rock");
+    // Some rocks to hide behind, and the loot at the far end.
+    const mid = (z0 + z1) / 2;
+    const cx = (xa + xb) / 2;
+    this.cover(cx, mid - (z1 - z0) * 0.22, 2.4, 0.8, floorY, "low", "stone");
+    this.cover(cx + sign * 1.2, mid + (z1 - z0) * 0.2, 0.8, 2.2, floorY, "high", "stone");
+    return this.boundaryCache(id, [far - sign * 3.2, floorY, mid]);
+  }
+
+  /** Builds the invisible barriers and the low rock lips for every open-world edge. */
+  private finishEdges(): void {
+    const solids = this.data.boxes.filter((b) => !b.boundary);
+    const water = this.data.water;
+    for (const e of this.edges) {
+      // Split the edge around any openings on it (pockets).
+      const inner = e.inward === 1 ? e.x1 : e.x0;
+      const holes = this.openings.filter((o) => o.inward === e.inward && Math.abs(o.x - inner) < 0.01 && o.z1 > e.z0 && o.z0 < e.z1).sort((a, b) => a.z0 - b.z0);
+      const parts: Array<[number, number]> = [];
+      let z = e.z0;
+      for (const h of holes) {
+        if (h.z0 > z) parts.push([z, h.z0]);
+        z = Math.max(z, h.z1);
+      }
+      if (z < e.z1) parts.push([z, e.z1]);
+      for (const [za, zb] of parts) {
+        // The barrier: same footprint as the old wall and much taller, but invisible.
+        this.box([e.x0, e.y0 - 30, za], [e.x1, Math.max(e.y1, e.y0) + 120, zb], e.material, { boundary: true });
+        // The lip follows the floor beside it, in short slices.
+        const step = 3;
+        for (let s0 = za; s0 < zb - 1e-6; s0 += step) {
+          const s1 = Math.min(zb, s0 + step);
+          const sx0 = e.inward === 1 ? inner : inner - 1.5;
+          const sx1 = e.inward === 1 ? inner + 1.5 : inner;
+          let floor = -Infinity;
+          for (const b of solids) {
+            if (b.cover || b.explosive || b.max.y > e.y1 || b.max.x < sx0 || b.min.x > sx1 || b.max.z < s0 || b.min.z > s1) continue;
+            floor = Math.max(floor, b.max.y);
+          }
+          for (const w of water) if (!(w.max.x < sx0 || w.min.x > sx1 || w.max.z < s0 || w.min.z > s1)) floor = Math.max(floor, w.max.y);
+          if (!Number.isFinite(floor)) continue; // a chasm: nothing to stand on, no lip needed
+          this.box([e.x0, e.y0, s0], [e.x1, floor + LIP_HEIGHT, s1], e.material);
+        }
+      }
+    }
+    this.edges = [];
   }
 
   /** Makes every box and ledge in `group` travel along `path` (offsets from where they start). */
@@ -351,6 +457,7 @@ export class LevelBuilder {
   }
 
   build(): LevelData {
+    if (this.edges.length) this.finishEdges();
     return this.data;
   }
 }

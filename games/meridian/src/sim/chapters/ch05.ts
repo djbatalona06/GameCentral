@@ -7,7 +7,7 @@ import { LevelBuilder } from "../world/LevelBuilder";
 import type { ChapterScript } from "../story/types";
 
 export function buildCh05() {
-  const b = new LevelBuilder("ch05", { top: "#7f97ad", bottom: "#d5dde4", fog: "#b7c3cd", fogDensity: 0.011 }, -40);
+  const b = new LevelBuilder("ch05", { top: "#7f97ad", bottom: "#d5dde4", fog: "#b7c3cd", fogDensity: 0.011 }, -40).openWorld();
 
   b.weather("snow", "snow", [-32, -2, -16], [32, 70, 290], { wind: [0.25, 0, 0] });
 
@@ -16,6 +16,8 @@ export function buildCh05() {
   b.box([-16, -8, -18], [16, 30, -14], "rock");
   b.walls(14, -14, 72);
   b.checkpoint("c1", [0, 0, -8], 0, "Saint Aurel Trail");
+  b.cache("ch05-crate-trail", [11.5, 0, -10.5]);
+  b.pocket("ch05-edge-trail", "e", 14, 2, 16, 12, 0, "snow");
   b.trigger([-14, 0, -4], [14, 3, -1], "tut:snow");
   b.grass([-12, 0, 6], [-5, 1.4, 20]); // snow-laden juniper
   b.grass([5, 0, 22], [12, 1.4, 36]);
@@ -38,6 +40,7 @@ export function buildCh05() {
   // --- 2. Cliff climb ---------------------------------------------------------------------
   b.box([-14, 0, 72], [14, 18, 186], "rock", { ledges: ["s"] });
   b.checkpoint("c2", [0, 0, 69], 0, "Foot of the Cliff");
+  b.camp("ch05-camp-cliff", [-8, 0, 67], "the Foot of the Cliff");
   b.handholds("z", 72, -1, 3, -3, [1.8, 3.6, 5.4, 7.2, 9.0, 10.8, 12.6, 14.4, 16.2], 1.4, [4]);
   b.trigger([-14, 0, 64], [14, 3, 70], "cliff");
   b.treasure("ch05-rosary", [12.5, 18.4, 74], "Bone Rosary", "Forty beads of carved bone and one of red coral, out of place and very old.");
@@ -57,6 +60,7 @@ export function buildCh05() {
   b.pickup([12.5, 18.3, 100], "ammo", 30);
   b.pickup([0, 18.3, 132], "grenade", 2);
   b.arena("court", [-14, 17, 84], [14, 23, 136]);
+  b.pocket("ch05-edge-court", "w", -14, 112, 128, 10, 18, "stone");
   b.enemy("rifleman", [-5, 18, 114], 180, "court", { patrol: [[-5, 18, 114], [6, 18, 114]] });
   b.enemy("rifleman", [9, 18, 126], 200, "court");
   b.enemy("grenadier", [-9, 18, 130], 160, "court");
@@ -81,6 +85,8 @@ export function buildCh05() {
   b.box([4, 18, 178], [14, 30, 180], "stone");
   b.box([-4, 18, 178], [4, 24, 180], "wood", { group: "northgate" });
   b.checkpoint("c5", [0, 18, 175], 0, "North Gate");
+  b.camp("ch05-camp-gate", [8, 18, 173], "the North Gate");
+  b.cache("ch05-crate-gate", [-11.5, 18, 174], "rare");
 
   // --- 5. Avalanche run -------------------------------------------------------------------
   b.box([-6, 17, 186], [6, 18, 188], "snow");

@@ -7,13 +7,15 @@ import { LevelBuilder } from "../world/LevelBuilder";
 import type { ChapterScript } from "../story/types";
 
 export function buildCh07() {
-  const b = new LevelBuilder("ch07", { top: "#141a26", bottom: "#36404f", fog: "#222a36", fogDensity: 0.012 }, -20);
+  const b = new LevelBuilder("ch07", { top: "#141a26", bottom: "#36404f", fog: "#222a36", fogDensity: 0.012 }, -20).openWorld();
 
   // --- 1. Container yard (searchlights) ---------------------------------------------------
   b.box([-22, -1, -16], [22, 0, 84], "metal", { ledges: ["n"] });
   b.box([-22, -8, -20], [22, 26, -16], "rock");
   b.walls(20, -16, 84);
   b.checkpoint("c1", [0, 0, -8], 0, "Ironwood Yard");
+  b.cache("ch07-crate-yard", [-18, 0, -12]);
+  b.pocket("ch07-edge-yard", "e", 20, 8, 22, 12, 0, "metal");
   b.trigger([-20, 0, 4], [20, 3, 7], "tut:searchlight");
   // Container stacks: high cover you can also climb on top of.
   for (const [x, z] of [[-6, 14], [7, 22], [-9, 40], [3, 48], [9, 34], [-4, 62], [8, 68]]) {
@@ -53,6 +55,7 @@ export function buildCh07() {
   // --- 2. Harbour crossing on crane containers --------------------------------------------
   b.walls(20, 84, 192);
   b.checkpoint("c2", [0, 0, 82], 0, "Harbour Edge");
+  b.camp("ch07-camp-harbour", [-9, 0, 81.6], "the Harbour Edge");
   b.water([-20, -8, 84], [20, -0.5, 108]);
   b.box([-22, -9, 84], [22, -8, 108], "rock");
   b.trigger([-20, 0, 80.5], [20, 3, 83], "tut:cranes");
@@ -63,6 +66,8 @@ export function buildCh07() {
   b.mover("crane3", "ct3", [[0, 0, 0], [0, 2.5, 0]], 1.2, { pause: 2 });
   b.box([-20, -8, 108], [20, 3.1, 124], "stone", { ledges: ["s"] });
   b.checkpoint("c3", [0, 3.1, 111], 0, "Far Quay");
+  b.camp("ch07-camp-quay", [8, 3.1, 112], "the Far Quay");
+  b.pocket("ch07-edge-quay", "w", -20, 110, 122, 10, 3.1, "stone");
   b.treasure("ch07-rivet", [16, 3.5, 118], "Gold Rivet", "From the Gilded Tide's hull. Varek had his ship riveted in gold. Of course he did.");
 
   // --- 3. The Gilded Tide -----------------------------------------------------------------
@@ -83,6 +88,7 @@ export function buildCh07() {
   b.pickup([0, 6.3, 156], "ammo", 30);
   b.treasure("ch07-bell", [8.5, 6.4, 150], "Ship's Bell", "Cast with the name of a ship that sank in 1612. Varek salvages more than gold.");
   b.arena("deck", [-10, 5, 124], [10, 10, 176]);
+  b.cache("ch07-crate-deck", [-9, 6, 140], "rare");
   b.enemy("rifleman", [-4, 6, 158], 180, "deck");
   b.enemy("rifleman", [5, 6, 162], 180, "deck");
   b.enemy("grenadier", [-7, 6, 170], 180, "deck");

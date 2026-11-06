@@ -7,13 +7,16 @@ import { LevelBuilder } from "../world/LevelBuilder";
 import type { ChapterScript } from "../story/types";
 
 export function buildCh02() {
-  const b = new LevelBuilder("ch02", { top: "#f2b880", bottom: "#f6e3c4", fog: "#f3d7b0", fogDensity: 0.008 });
+  const b = new LevelBuilder("ch02", { top: "#f2b880", bottom: "#f6e3c4", fog: "#f3d7b0", fogDensity: 0.008 }).openWorld();
 
   // --- 1. Docks (stealth) -----------------------------------------------------------------
   b.box([-12, -8, -16], [12, 26, -12], "rock");
   b.walls(10, -14, 60);
   b.box([-10, -1, -12], [10, 0, 56], "stone");
   b.checkpoint("c1", [0, 0, -6], 0, "Harbour Steps");
+  b.camp("ch02-camp-steps", [-5, 0, -8.5], "the Harbour Steps");
+  b.cache("ch02-crate-docks", [-8.6, 0, 1.5]);
+  b.pocket("ch02-edge-docks", "w", -10, -4, 6, 12, 0, "stone");
   b.pickup([2, 0.3, -4], "bottle", 2);
   // A frightened stall owner near the steps. Talking to him is optional (a story choice).
   b.block(8.4, 0.5, 1.6, 2.4, 0, 1.2, "wood");
@@ -45,13 +48,14 @@ export function buildCh02() {
   b.water([-10, -4, 56], [10, 1, 60]);
   b.box([-12, -1, 60], [12, 0, 118], "stone"); // market ground (also under roof C)
   b.walls(12, 60, 152);
-  b.box([10, -8, 56], [12, 26, 60], "rock");
-  b.box([-12, -8, 56], [-10, 26, 60], "rock");
+  b.edgeWall(10, 12, 56, 60, -1);
+  b.edgeWall(-12, -10, 56, 60, 1);
 
   // --- 3. Roof C (sniper) -----------------------------------------------------------------
   b.box([-10, 0, 60], [6, 5.5, 76], "plaster", { ledges: ["s"] });
   b.handholds("z", 60, -1, -6, -6, [1.7, 3.6], 1.4);
   b.checkpoint("c3", [0, 5.5, 64], 0, "Rooftops");
+  b.cache("ch02-crate-roof", [-8.4, 5.5, 62.6]);
   b.trigger([-10, 5.5, 63], [6, 8, 67], "chase_start");
   b.cover(-6, 67, 1, 1, 5.5, "high", "plaster");
   b.cover(2, 70, 1, 1, 5.5, "high", "plaster");
@@ -67,6 +71,9 @@ export function buildCh02() {
   b.arena("roofs", [3, 9, 110], [9, 11, 116]);
   b.enemy("sniper", [6, 9.5, 113], 180, "roofs", { wave: "snipers", alerted: true });
   b.arena("market", [-12, -1, 76], [12, 3, 118]);
+  // A side street off the market: room to flank, and an edge cache at the end.
+  b.pocket("ch02-edge-market", "e", 12, 92, 104, 12, 0, "stone");
+  b.cache("ch02-crate-market", [-10.4, 0, 93], "rare");
   b.cover(-6, 87, 3, 0.8, 0, "low", "wood", 60);
   b.cover(5, 89, 0.8, 3, 0, "high", "stone");
   b.cover(0, 95, 3, 0.8, 0, "low", "stone");
@@ -99,6 +106,8 @@ export function buildCh02() {
   // --- 5. Courtyard puzzle and archive ----------------------------------------------------
   b.box([-12, -1, 118], [12, 0, 162], "stone");
   b.checkpoint("c5", [0, 0, 123], 0, "Courtyard of Swallows");
+  b.camp("ch02-camp-court", [8, 0, 124.5], "the Courtyard");
+  b.pocket("ch02-edge-court", "e", 12, 130, 146, 12, 0, "stone");
   b.interact("mural", [-10.6, 1.6, 128], "examine", "Examine the mural", "mural", { once: false });
   b.block(-11, 128, 1, 4, 0, 3.5, "plaster");
   b.interact("lever_star", [-6, 1, 136], "lever", "Pull the Star lever", "lever", { once: false });
