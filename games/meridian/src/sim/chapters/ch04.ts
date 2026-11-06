@@ -7,15 +7,17 @@ import { LevelBuilder } from "../world/LevelBuilder";
 import type { ChapterScript } from "../story/types";
 
 export function buildCh04() {
-  const b = new LevelBuilder("ch04", { top: "#2b3550", bottom: "#c9a46a", fog: "#8c7a63", fogDensity: 0.006 });
+  const b = new LevelBuilder("ch04", { top: "#2b3550", bottom: "#c9a46a", fog: "#8c7a63", fogDensity: 0.006 }).openWorld();
 
   // One big salt flat under everything.
   b.box([-60, -1, -14], [60, 0, 900], "sand");
 
   // --- 1. Caravan camp (stealth) ----------------------------------------------------------
-  b.box([-16, -1, -16], [16, 20, -12], "rock");
+  b.edgeCap([-16, -1, -16], [16, 20, -12], 1);
   b.walls(14, -14, 60);
   b.checkpoint("c1", [0, 0, -6], 0, "Caravan Camp");
+  b.cache("ch04-crate-camp", [12, 0, -9]);
+  b.pocket("ch04-edge-camp", "w", -14, 18, 32, 14, 0, "sand");
   b.grass([-12, 0, 2], [-6, 1.4, 14]); // dry scrub
   b.grass([6, 0, 16], [12, 1.4, 30]);
   b.grass([-10, 0, 34], [-2, 1.4, 44]);
@@ -41,6 +43,7 @@ export function buildCh04() {
   b.treasure("ch04-coin", [-6, 2.8, 26], "Salt Road Dinar", "A silver coin worn smooth on one side. The other shows a ship under a single star.");
   // Bram's jeep at the edge of camp.
   b.checkpoint("c2", [-2.5, 0, 56], 0, "Bram's Jeep");
+  b.camp("ch04-camp-jeep", [-9, 0, 55], "Bram's Jeep");
   b.interact("jeep", [0, 1, 60], "vehicle", "Get in the jeep", "jeep", { radius: 2.4 });
 
   // --- 2. Jeep chase across the flats -----------------------------------------------------
@@ -81,6 +84,7 @@ export function buildCh04() {
   b.pickup([0, 0.3, 745], "ammo", 30);
   b.treasure("ch04-astro", [13.5, 0.4, 742], "Pocket Sand-Glass", "A traveller's hourglass in a brass cage. The sand inside is black and glitters like crushed stars.");
   b.arena("storm", [-16, -1, 644], [16, 5, 766]);
+  b.pocket("ch04-edge-storm", "e", 16, 676, 692, 12, 0, "sand");
   b.enemy("rifleman", [-6, 0, 696], 180, "storm", { wave: "storm1" });
   b.enemy("rifleman", [7, 0, 706], 180, "storm", { wave: "storm1" });
   b.enemy("shotgunner", [-9, 0, 716], 160, "storm", { wave: "storm1" });
@@ -93,6 +97,8 @@ export function buildCh04() {
   // --- 4. Waystation tower (climb + lever puzzle) -----------------------------------------
   b.walls(12, 766, 860);
   b.checkpoint("c4", [0, 0, 776], 0, "Waystation");
+  b.camp("ch04-camp-waystation", [8, 0, 777], "the Waystation");
+  b.pocket("ch04-edge-waystation", "w", -12, 768, 782, 12, 0, "sand");
   b.box([-6, 0, 790], [6, 10, 812], "stone", { ledges: ["s"] });
   b.handholds("z", 790, -1, -2, -2, [1.8, 3.6, 5.4, 7.2, 8.6], 1.4);
   b.trigger([-12, 0, 782], [12, 3, 788], "tut:tower");
@@ -107,8 +113,9 @@ export function buildCh04() {
   b.box([-1.5, 9.4, 812], [1.5, 10, 830], "stone", { group: "wsbridge", hidden: true });
   // Cliff shrine.
   b.box([-12, 0, 830], [12, 10, 860], "rock");
-  b.box([-14, 0, 860], [14, 24, 864], "rock");
+  b.edgeCap([-14, 0, 860], [14, 24, 864], -1);
   b.checkpoint("c6", [0, 10, 836], 0, "Cliff Shrine");
+  b.cache("ch04-crate-shrine", [8, 10, 852], "rare");
   b.trigger([-12, 10, 846], [12, 13, 850], "shrine");
   b.treasure("ch04-chart", [0, 10.5, 856], "Star Chart Fragment", "Half a chart inked on sharkskin. The other half was torn away along a perfectly straight line.");
 

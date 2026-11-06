@@ -24,6 +24,11 @@ export interface BoxDef {
   explosive?: boolean;
   /** Player may wall-jump off this box's sides. */
   wallJump?: boolean;
+  /**
+   * The invisible edge of the map. It stops the player and enemies, but bullets, the camera,
+   * grenades and sight pass through it, and nothing is drawn: the land looks like it goes on.
+   */
+  boundary?: boolean;
 }
 
 export interface RampDef {
@@ -86,7 +91,8 @@ export interface CrateDef {
   max: V3;
 }
 
-export type PickupType = "ammo" | "weapon" | "grenade" | "bottle";
+/** Ammo, guns and throwables, plus the three loot resources (see loot/items.ts). */
+export type PickupType = "ammo" | "weapon" | "grenade" | "bottle" | "salvage" | "parts" | "powder";
 
 export interface PickupDef {
   id: string;
@@ -103,7 +109,7 @@ export interface CollectibleDef {
   description: string;
 }
 
-export type InteractKind = "lever" | "door" | "examine" | "pillar" | "plate" | "valve" | "bell" | "panel" | "vehicle";
+export type InteractKind = "lever" | "door" | "examine" | "pillar" | "plate" | "valve" | "bell" | "panel" | "vehicle" | "cache" | "camp";
 
 export interface InteractDef {
   id: string;
@@ -115,6 +121,8 @@ export interface InteractDef {
   event: string;
   once?: boolean;
   hidden?: boolean;
+  /** Loot caches: how good the loot is. */
+  tier?: "common" | "rare" | "boundary";
 }
 
 export interface TriggerDef {

@@ -1,7 +1,9 @@
 // Upgrades older save files one version at a time: v1 -> v2 -> ... -> current.
 
-import { SAVE_VERSION, type SaveFile, type SaveFileV1, type SaveFileV2 } from "./schema";
+import { SAVE_VERSION, type SaveFile, type SaveFileV1, type SaveFileV2, type SaveFileV3 } from "./schema";
 import { newStoryState } from "../sim/story/State";
+import { claimWeapon, newEconomy } from "../sim/loot/Economy";
+import type { WeaponId } from "../sim/combat/weapons";
 
 type AnySave = { version: number } & Record<string, unknown>;
 
@@ -31,8 +33,18 @@ const steps: Record<number, (s: AnySave) => AnySave> = {
   // v2 had no story state: start everyone at the usual starting feelings. Choices already made
   // cannot be recovered, so a finished chapter simply keeps the neutral story.
   2: (raw) => {
-    const v3: SaveFile = { ...(raw as unknown as SaveFileV2), version: 3, story: newStoryState() };
+    const v3: SaveFileV3 = { ...(raw as unknown as SaveFileV2), version: 3, story: newStoryState() };
     return v3 as unknown as AnySave;
+  },
+  // v3 had no loot. Start with an empty purse, plus any gun carried in a mid-chapter checkpoint
+  // (it counts as found, so it can be picked at camps).
+  3: (raw) => {
+    const s = raw as unknown as SaveFileV3;
+    const economy = newEconomy();
+    const lo = s.snapshot?.loadout;
+    for (const w of [lo?.sidearm?.id, lo?.long?.id]) if (w) claimWeapon(economy, w as WeaponId);
+    const v4: SaveFile = { ...s, version: 4, economy };
+    return v4 as unknown as AnySave;
   },
 };
 

@@ -40,6 +40,9 @@ No names, characters, locations, story beats or assets come from any existing ga
 | Enemies | 7 types (rifleman, breacher, marksman, grenadier, heavy, brute, lieutenant boss) with vision, hearing, suspicion, cover use, flanking, squad attack limits |
 | Story | Objectives, dialogue with subtitles, cutscenes, journal, treasures, puzzles, set pieces |
 | Choices | Spoken answers at story moments (nine in Act I) that change who helps you, what people say and which of three endings is reachable; people remember how you play; short optional talks between chapters; no timers unless the player opts in |
+| Open maps | No canyon walls: low rock edges with an invisible boundary behind them, open land made in Blender out to the horizon, side pockets with edge caches, "the map ends here" notice |
+| Loot & camps | Salvage (money), Parts and Powder from enemies, treasures and crates; 1–2 camps per chapter to buy starting weapons, craft ammo/grenades/bottles/field plates and upgrade each gun (damage, magazine, reload, stability; 3 tiers) |
+| Cover & barriers | Cover stops most bullets from the side it faces, walls stop enemies and muffle sound, cover is drawn as sandbags, planks, stone or metal, breakable cover by material |
 | Saving | Auto-save at checkpoints, 3 slots + backup, export/import, works offline |
 | Accessibility | Presets, subtitles, colour-blind modes, high contrast, text size, narration, aim/traversal/puzzle assists, remapping, one-handed touch layouts |
 | Performance | Steady 30 fps (never below 20) on mid-range phones, 60 fps option on strong devices, quality tiers, dynamic resolution |

@@ -21,7 +21,9 @@
     "icons": "capacitor-assets generate --assetPath resources --iconBackgroundColor \"#0d1117\" --iconBackgroundColorDark \"#0d1117\" --splashBackgroundColor \"#0d1117\" --splashBackgroundColorDark \"#0d1117\" --android --ios",
     "desktop:dev": "npm run build && electron desktop/main.cjs",
     "desktop:build": "npm run build && electron-builder --publish never",
-    "backgrounds": "python -I assets-src/blender/render_backgrounds.py"
+    "backgrounds": "npm run export-levels && python -I assets-src/blender/render_backgrounds.py",
+    "export-levels": "node scripts/export-levels.mjs",
+    "terrain": "npm run export-levels && python -I assets-src/blender/render_backgrounds.py --terrain-only && node scripts/optimize-assets.mjs --terrain"
   },
   "dependencies": {
     "@babylonjs/core": "^9.33.1",

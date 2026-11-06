@@ -6,13 +6,13 @@ import { LevelBuilder } from "../world/LevelBuilder";
 import type { ChapterScript } from "../story/types";
 
 export function buildCh01() {
-  const b = new LevelBuilder("ch01", { top: "#7fb7d9", bottom: "#e8d9b5", fog: "#cfe3ee", fogDensity: 0.006 });
+  const b = new LevelBuilder("ch01", { top: "#7fb7d9", bottom: "#e8d9b5", fog: "#cfe3ee", fogDensity: 0.006 }).openWorld();
 
   // --- 1. Beach ---------------------------------------------------------------------------
-  b.box([-10, -8, -16], [10, 26, -12], "rock"); // back wall
+  b.edgeCap([-10, -8, -16], [10, 26, -12], 1); // back of the beach
   b.walls(8, -14, 40);
-  b.box([-10, -8, 40], [-8, 26, 100], "rock"); // west cliff
-  b.box([8, -8, 82], [10, 26, 100], "rock"); // east cliff beyond the shelf
+  b.edgeWall(-10, -8, 40, 100, 1); // west side
+  b.edgeWall(8, 10, 82, 100, -1); // east side beyond the shelf
   b.box([-8, -1, -12], [8, 0, 18], "sand");
   b.block(3, 4, 2, 2, 0, 0.35, "rock"); // step
   b.block(-3, 9, 3, 2.5, 0, 1.0, "rock"); // jump-up rock
@@ -20,6 +20,9 @@ export function buildCh01() {
   b.box([-8, 0, 18], [8, 2.6, 21], "rock", { ledges: ["s"] }); // first climb
   b.trigger([-8, 0, 12], [8, 3, 17], "tut:climb");
   b.checkpoint("c1", [0, 0, -6], 0, "Breakwater Beach");
+  // Open beach: a driftwood crate, and a cove off to the west with an edge cache.
+  b.cache("ch01-crate-beach", [5.5, 0, -9]);
+  b.pocket("ch01-edge-beach", "w", -8, 0, 14, 14, 0, "sand");
 
   // --- 2. Lagoon -------------------------------------------------------------------------
   b.ramp([-8, 0, 21], [8, 2.6, 27], "z", -1, "sand");
@@ -35,14 +38,17 @@ export function buildCh01() {
   b.interact("astrolabe", [0, 4.1, 58.2], "examine", "Examine the astrolabe", "astrolabe");
   b.treasure("ch01-compass", [3, 3.4, 54], "Brass Sailor's Compass", "Its needle still swings true. Someone scratched the initials C.O. into the lid.");
   b.checkpoint("c2", [0, 3, 55], 0, "The Wreck of the Santa Brigida");
+  b.cache("ch01-crate-wreck", [-2.4, 3, 53.2], "rare");
   b.box([-4, -8, 63], [4, -3, 64], "rock"); // seabed lip under the stern
 
   // --- 4. Shore shelf --------------------------------------------------------------------
   b.box([-8, -1, 63], [8, 1, 82], "rock");
-  b.box([8, -8, 40], [10, 4.5, 82], "rock"); // lower east wall so the sea is visible
+  b.edgeWall(8, 10, 40, 82, -1); // east side, open to the sea
   b.box([24, 0, 64], [30, 3, 74], "metal", { group: "giltboat", hidden: true });
   b.trigger([-8, 1, 74], [8, 4, 81], "tut:handholds");
   b.checkpoint("c3", [0, 1, 70], 0, "Rocky Shelf");
+  b.camp("ch01-camp-shelf", [-5, 1, 67], "the Shelf Camp");
+  b.pocket("ch01-edge-shelf", "e", 8, 64, 76, 11, 1, "rock");
 
   // --- 5. Sea cliff ----------------------------------------------------------------------
   b.box([-8, 1, 82], [8, 12, 100], "rock", { ledges: ["s"] });
@@ -60,6 +66,7 @@ export function buildCh01() {
   b.beam([0, 12, 125], [0, 12, 133]);
   b.trigger([-8, 12, 120], [8, 15, 125], "tut:beam");
   b.checkpoint("c5", [0, 12, 115], 0, "Windward Ridge");
+  b.camp("ch01-camp-ridge", [5, 12, 113], "the Ridge Camp");
 
   // --- 8. Watchtower ruins (stealth / combat) -------------------------------------------
   b.box([-14, 1, 133], [14, 12, 178], "stone");
@@ -81,6 +88,8 @@ export function buildCh01() {
   b.block(0, 169.5, 2, 0.6, 12, 12.8, "stone");
   b.block(0, 172, 6, 4, 12, 13.2, "stone"); // tower platform
   b.arena("tower", [-14, 11, 133], [14, 16, 178]);
+  // A flank to the west of the tower, with an edge cache for the curious.
+  b.pocket("ch01-edge-tower", "w", -14, 146, 162, 12, 12, "stone");
   b.enemy("rifleman", [-2, 12, 150], 180, "tower", { patrol: [[-2, 12, 150], [7, 12, 150], [7, 12, 141], [-2, 12, 141]] });
   b.enemy("rifleman", [8, 12, 166], 200, "tower");
   b.enemy("rifleman", [-9, 12, 158], 160, "tower", { patrol: [[-9, 12, 158], [-9, 12, 146], [0, 12, 158]] });
@@ -98,11 +107,13 @@ export function buildCh01() {
   // --- 9. Cove ---------------------------------------------------------------------------
   b.box([-8, -1, 195], [8, 1.5, 236], "sand");
   b.walls(8, 190, 238);
-  b.box([-10, -8, 236], [10, 26, 240], "rock");
+  b.edgeCap([-10, -8, 236], [10, 26, 240], -1);
   b.block(0, 229, 3, 6, 1.5, 2.6, "wood"); // Bram's boat
   b.trigger([-8, 1.5, 222], [8, 4, 226], "reach_boat");
   b.treasure("ch01-seal", [6, 1.9, 215], "Ordaz Family Seal", "A wax seal stamp: a compass rose wrapped in a serpent. The serpent bites a star.");
   b.checkpoint("c7", [0, 1.5, 205], 0, "Smuggler's Cove");
+  b.pocket("ch01-edge-cove", "w", -8, 208, 226, 14, 1.5, "sand");
+  b.cache("ch01-crate-cove", [5.5, 1.5, 200]);
 
   return b.build();
 }

@@ -72,6 +72,8 @@ describe.each(playable.map((c) => [c.id, c] as const))("%s level integrity", (_i
     for (const t of level.triggers) expect(script.events[t.event], `trigger ${t.event}`).toBeDefined();
     for (const i of level.interacts) {
       if (puzzleInteracts.has(i.id)) continue;
+      // Loot caches and camps are handled by the engine itself, not by the chapter script.
+      if (i.kind === "cache" || i.kind === "camp") continue;
       expect(script.events[i.event], `interact ${i.id}`).toBeDefined();
     }
     for (const p of script.puzzles) expect(script.events[p.onSolve], `puzzle ${p.id}`).toBeDefined();

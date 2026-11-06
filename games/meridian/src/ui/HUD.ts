@@ -3,7 +3,8 @@
 import hudHtml from "./screens/hud.html?raw";
 import { TUNING } from "../config/tuning";
 import type { Settings } from "../core/Settings";
-import { WEAPONS, currentSpread } from "../sim/combat/weapons";
+import { WEAPONS, currentSpread, defOf } from "../sim/combat/weapons";
+import { PLATE_ARMOR, RESOURCE_NAMES, type Resource } from "../sim/loot/items";
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, yawOf, sub } from "../sim/math";
 import type { Speaker } from "../sim/story/types";
@@ -25,6 +26,13 @@ const SPEAKER_COLORS: Record<Speaker, string> = {
 };
 
 const TOUCH_LABELS: Record<"interact" | "melee" | "jump", string> = { interact: "Use", melee: "Melee", jump: "Jump" };
+
+/** Health colour: green when healthy, through yellow, to red when nearly out. */
+export function hpColor(frac: number): string {
+  const f = Math.max(0, Math.min(1, frac));
+  const hue = Math.round(f * 125); // 0 = red, 125 = green
+  return `hsl(${hue}, 72%, ${f < 0.3 ? 55 : 48}%)`;
+}
 
 export class HUD {
   readonly el: HTMLElement;
@@ -66,6 +74,16 @@ export class HUD {
 
   show(on: boolean): void {
     this.el.classList.toggle("hidden", !on);
+  }
+
+  private lastBoundaryToast = -Infinity;
+  private lootFlash = 0;
+  private lootText = "";
+  private lootGain = new Map<Resource, number>();
+
+  /** A short notice in the toast area (also used outside sim events, e.g. a new controller). */
+  notice(title: string, body = ""): void {
+    this.toast(title, body);
   }
 
   private toast(title: string, body = ""): void {
@@ -124,6 +142,23 @@ export class HUD {
         break;
       case "pickup":
         this.toast(ev.label);
+        break;
+      case "loot":
+        // Several drops in a row add up into one "+n" flash instead of a stack of toasts.
+        if (this.lootFlash <= 0) this.lootGain.clear();
+        this.lootGain.set(ev.resource, (this.lootGain.get(ev.resource) ?? 0) + ev.amount);
+        this.lootText = [...this.lootGain].map(([r, n]) => `+${n} ${RESOURCE_NAMES[r]}`).join(" ");
+        this.lootFlash = 2;
+        break;
+      case "cacheOpened":
+        if (ev.tier === "boundary") this.toast("Edge cache found", " Extra loot for exploring the far side of the map.");
+        break;
+      case "boundary":
+        // Once every few seconds at most, so walking along the edge doesn't flood the screen.
+        if (ev.near && performance.now() - this.lastBoundaryToast > 8000) {
+          this.lastBoundaryToast = performance.now();
+          this.toast("The map ends here", " Turn back to keep exploring.");
+        }
         break;
       case "treasure":
         this.toast(`Treasure: ${ev.name}`, ` ${ev.description}`);
@@ -254,6 +289,25 @@ export class HUD {
     // Health: red vignette grows as health drops.
     const hpFrac = sim.health.hp / sim.health.max;
     this.q("vignette").style.opacity = String(Math.max(0, Math.min(1, (1 - hpFrac) * 1.3 - 0.1)));
+    // The hero's health bar (and field plate), plus a boss bar while a boss is fighting.
+    const bars = s.a11y.healthBars && !sim.cutscene;
+    const hb = this.q("health");
+    hb.classList.toggle("hidden", !bars);
+    if (bars) {
+      const pct = Math.round(Math.max(0, Math.min(1, hpFrac)) * 100);
+      this.q("hp-fill").style.width = `${pct}%`;
+      hb.style.setProperty("--hp-color", hpColor(hpFrac));
+      this.q("hp-plate").style.width = `${Math.round(Math.min(1, sim.armor / PLATE_ARMOR) * 100)}%`;
+      this.q("hp-text").textContent = sim.armor > 0 ? `Health ${pct} · Plate ${Math.round(sim.armor)}` : `Health ${pct}`;
+      hb.setAttribute("aria-valuenow", String(pct));
+      hb.classList.toggle("low", hpFrac < 0.3 && !sim.dead);
+    }
+    const boss = bars ? sim.enemies.find((e) => e.alive && e.def.role === "boss" && e.aware) : undefined;
+    this.q("boss").classList.toggle("show", !!boss);
+    if (boss) {
+      this.q("boss-fill").style.width = `${Math.round((boss.hp / boss.def.hp) * 100)}%`;
+      this.q("boss-name").textContent = boss.def.name;
+    }
 
     // Reticle reflects spread, enemy-under-reticle and scope.
     const w = sim.activeWeapon();
@@ -280,10 +334,16 @@ export class HUD {
       this.q("weapon-name").textContent = WEAPONS[w.id].name + (w.reloadLeft > 0 ? "  reloading…" : "");
       const mag = this.q("mag");
       mag.textContent = String(w.mag);
-      mag.classList.toggle("low", w.mag <= Math.ceil(WEAPONS[w.id].magSize * 0.25));
+      mag.classList.toggle("low", w.mag <= Math.ceil(defOf(w).magSize * 0.25));
       this.q("reserve").textContent = `/ ${w.reserve}`;
-      this.q("throwables").textContent = `Grenades ${sim.grenades} · Bottles ${sim.bottles}`;
+      this.q("throwables").textContent = `Grenades ${sim.grenades} · Bottles ${sim.bottles}` + (sim.armor > 0 ? ` · Plate ${Math.round(sim.armor)}` : "");
     }
+    // The purse: salvage always, and a short "+12" flash when loot comes in.
+    const purse = this.q("purse");
+    const e = sim.economy;
+    purse.textContent = `Salvage ${e.salvage} · Parts ${e.parts} · Powder ${e.powder}` + (this.lootFlash > 0 ? `  ${this.lootText}` : "");
+    purse.classList.toggle("flash", this.lootFlash > 0);
+    this.lootFlash = Math.max(0, this.lootFlash - dt);
 
     // Context prompt with the right button name for the current device.
     const pr = this.q("prompt");

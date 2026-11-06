@@ -27,6 +27,8 @@ export function buildCh06() {
   flat(0, 10);
   b.box([-W, DECK, 0], [W, 3.6, 3], "wood"); // caboose cabin
   b.checkpoint("c1", [0, DECK, 6], 0, "Caboose");
+  // The caboose doubles as a camp. Loot rides in crates along the train (no edges here: it's a train).
+  b.camp("ch06-camp-caboose", [-1.3, DECK, 8.6], "the Caboose");
   b.pickup([1.6, DECK + 0.3, 5], "ammo", 30);
   b.treasure("ch06-ticket", [-1.8, DECK + 0.4, 4], "First-Class Ticket, 1931", "Punched for Varanask and never used. The passenger's name has been carefully scratched out.");
   coupler(10, 11.5);
@@ -48,6 +50,7 @@ export function buildCh06() {
   b.cover(-1.4, 60, 1.6, 0.8, DECK, "low", "wood");
   b.pickup([2, DECK + 0.3, 50], "grenade", 1);
   b.arena("a1", [-W, 0.8, 46.5], [W, 3.5, 62.5]);
+  b.cache("ch06-crate-lumber", [1.6, DECK, 61.4]);
   b.enemy("rifleman", [0, DECK, 58], 180, "a1");
   b.enemy("shotgunner", [1.5, DECK, 61.5], 180, "a1");
   b.arena("a1r", [-W, ROOF - 0.2, 64], [W, ROOF + 2, 80]);
@@ -71,6 +74,7 @@ export function buildCh06() {
   b.pickup([-2, DECK + 0.3, 84], "ammo", 30);
   b.treasure("ch06-lantern", [2, DECK + 0.4, 97], "Signal Lantern", "Red and green glass in a tin case. Shake it and something rattles inside: a rolled-up note.");
   b.arena("a2", [-W, 0.8, 81.5], [W, 3.5, 97.5]);
+  b.cache("ch06-crate-ore", [-1.7, DECK, 96.4], "rare");
   b.enemy("brute", [0, DECK, 94], 180, "a2");
   b.enemy("grenadier", [-1.5, DECK, 96.5], 180, "a2");
   b.enemy("rifleman", [1.5, DECK, 96.5], 180, "a2");
@@ -81,6 +85,7 @@ export function buildCh06() {
   boxcar(99, 115);
   b.trigger([-W, ROOF, 101], [W, ROOF + 3, 104], "tunnel3");
   b.hazard("tunnel3", "tunnel", [-8, ROOF + 1.3, 175], [8, 16, 178], { vel: [0, 0, -26], travel: 210, startActive: false, warn: "Long tunnel! Stay down!" });
+  b.cache("ch06-crate-roof", [1.4, ROOF, 113.6], "boundary");
   b.treasure("ch06-badge", [-1.8, ROOF + 0.4, 112], "Gilt Company Badge", "Gold plate over tin. Even the Gilt Company's gold isn't real.");
   coupler(115, 116.5);
 

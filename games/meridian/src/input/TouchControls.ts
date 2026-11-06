@@ -65,6 +65,8 @@ export interface WeaponCard {
   reloading: boolean;
   grenades: number;
   bottles: number;
+  /** Loot purse (salvage), shown on the card so touch players see what they can spend at camps. */
+  salvage?: number;
 }
 
 /** Default positions as % of the viewport (x from left, y from top) for each layout. */
@@ -227,7 +229,7 @@ export class TouchControls {
     const set = (role: string, text: string) => (card.querySelector(`[data-role="${role}"]`)!.textContent = text);
     set("gun-name", w.reloading ? `${w.name} · reloading` : w.name);
     set("gun-ammo", `${w.mag} / ${w.reserve}`);
-    set("gun-extra", `Grenades ${w.grenades} · Bottles ${w.bottles}`);
+    set("gun-extra", `Grenades ${w.grenades} · Bottles ${w.bottles}` + (w.salvage !== undefined ? ` · Salvage ${w.salvage}` : ""));
     card.classList.toggle("tc-low", w.low);
   }
 
@@ -332,6 +334,7 @@ export class TouchControls {
       // Walk mode halves the stick, which the player controller turns into a slow, quiet walk.
       const gain = this.walk ? 0.5 : 1;
       this.src.move = { x: (dx / R) * gain, y: (-dy / R) * gain };
+      this.src.walk = this.walk;
       this.stickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
     } else if (o.kind === "look") {
       this.src.look.yaw += (e.clientX - o.lx) * sens;

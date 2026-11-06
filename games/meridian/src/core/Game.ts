@@ -12,7 +12,10 @@ import { KeyboardMouse } from "../input/KeyboardMouse";
 import { GamepadInput } from "../input/GamepadInput";
 import { TouchControls } from "../input/TouchControls";
 import type { ButtonAction, InputFrame } from "../input/actions";
-import { WEAPONS } from "../sim/combat/weapons";
+import { WEAPONS, type WeaponId, defOf } from "../sim/combat/weapons";
+import { canAfford, cloneEconomy } from "../sim/loot/Economy";
+import { type CraftId, RECIPES, costText } from "../sim/loot/items";
+import { MAX_TIER, TRACKS, TRACK_HELP, TRACK_NAMES } from "../sim/loot/upgrades";
 import { GameSim, DIFFICULTY_NAMES, type Difficulty, type PendingChoice, type SimEvent, type Snapshot } from "../sim/GameSim";
 import { CHAPTERS, chapterById, totalStoryMinutes } from "../sim/chapters/registry";
 import type { ChapterDef, Speaker } from "../sim/story/types";
@@ -27,7 +30,7 @@ import { HUD } from "../ui/HUD";
 import { renderSettingsTab, padSpoken } from "../ui/SettingsScreen";
 import { desktopBridge, isComputer, setFullscreen } from "../platform/desktop";
 
-type AppState = "menu" | "playing" | "paused" | "choosing" | "dead" | "results";
+type AppState = "menu" | "playing" | "paused" | "choosing" | "camp" | "dead" | "results";
 
 const TIPS = [
   "Low cover protects you while crouched. Aim to pop up and shoot.",
@@ -120,6 +123,7 @@ export class Game {
     this.input = new InputManager(s);
     this.keyboard = new KeyboardMouse(this.input.keyboard, canvas, s);
     this.gamepad = new GamepadInput(this.input.gamepad, s);
+    this.gamepad.onNonStandard = () => this.hud.notice("Controller connected", "Its buttons use an unusual layout. You can remap them in Settings, Controls.");
     this.touch = new TouchControls(this.input.touch, s, document.getElementById("touch-root")!);
     this.touch.show(false);
     this.touch.onLayoutChanged = () => this.settingsChanged();
@@ -168,7 +172,10 @@ export class Game {
     document.body.classList.add(`layout-${s.controls.touchLayout}`);
     this.audio.applyVolumes();
     this.renderer.applyAccessibility();
-    if (this.sim) Object.assign(this.sim.opts, s.gameplay);
+    if (this.sim) {
+      Object.assign(this.sim.opts, s.gameplay);
+      this.sim.holdCrouch = !s.controls.toggleCrouch;
+    }
     this.sim?.squad.setDifficulty(s.gameplay.difficulty);
   }
 
@@ -190,7 +197,17 @@ export class Game {
     window.addEventListener("pointerdown", unlock, { passive: true });
     window.addEventListener("keydown", unlock);
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden && this.state === "playing") this.pause();
+      if (!document.hidden) return;
+      this.keyboard.releaseAll();
+      this.input.reset();
+      if (this.state === "playing") this.pause();
+    });
+    // Switching to another window: keys released over there never send a keyup here (Cmd+Tab on a
+    // Mac is the classic case), so let go of everything and pause instead of running on with W stuck.
+    window.addEventListener("blur", () => {
+      this.keyboard.releaseAll();
+      this.input.reset();
+      if (this.state === "playing" && this.inputMode === "desktop") this.pause();
     });
     // Landscape only: a phone held upright is covered by a "turn your phone" prompt (index.html, base.css).
     // Pause behind it, and carry on by itself when the phone is turned back. Computers are not affected.
@@ -601,7 +618,8 @@ export class Game {
     this.audio.stopSpeech();
     // A chapter that is already finished keeps the answers given the first time (nothing is counted twice).
     const replaying = !!this.save?.chapters[ch.id]?.completed;
-    this.sim = new GameSim(ch, { ...this.settings.gameplay }, snapshot ?? undefined, Date.now() & 0xffff, this.save?.story, replaying);
+    this.sim = new GameSim(ch, { ...this.settings.gameplay }, snapshot ?? undefined, Date.now() & 0xffff, this.save?.story, replaying, this.save?.economy);
+    this.sim.holdCrouch = !this.settings.controls.toggleCrouch;
     this.lastSnapshot = snapshot ?? this.sim.snapshot();
     this.renderer.load(this.sim);
     this.hud.reset();
@@ -787,6 +805,128 @@ export class Game {
     });
   }
 
+  // ------------------------------------------------------------------ camps
+
+  /** The camp screen: buy starting weapons, craft supplies and upgrade guns. The world waits. */
+  private openCamp(label: string): void {
+    const sim = this.sim;
+    if (!sim) return;
+    this.state = "camp";
+    this.input.enabled = false;
+    this.input.reset();
+    this.keyboard.exitPointerLock();
+    this.touch.show(false);
+    this.hud.show(false);
+    let tab: "buy" | "craft" | "upgrade" = "buy";
+    let pickWeapon: WeaponId = sim.activeWeapon()?.id ?? "pistol";
+    this.ui.show("camp", {
+      init: (el) => {
+        el.querySelector('[data-role="title"]')!.textContent = label.replace(/^Rest at /, "");
+        const purse = el.querySelector('[data-role="purse"]')!;
+        const note = el.querySelector('[data-role="note"]')!;
+        const list = el.querySelector('[data-role="list"]')!;
+        const prices = sim.campPrices();
+        const say = (r: { ok: boolean; reason?: string }, ok: string) => {
+          note.textContent = r.ok ? ok : (r as { reason: string }).reason;
+          this.ui.announce(note.textContent ?? "");
+          this.audio.ui(r.ok ? "select" : "error");
+          render();
+        };
+        const row = (text: string, cost: string, enabled: boolean, onPick: () => void, help = "") => {
+          const b = document.createElement("button");
+          const name = document.createElement("span");
+          name.textContent = text;
+          const c = document.createElement("span");
+          c.className = "cost";
+          c.textContent = cost;
+          b.append(name, c);
+          if (help) b.title = help;
+          b.setAttribute("aria-label", `${text}. ${cost}.${help ? ` ${help}` : ""}`);
+          if (!enabled) b.setAttribute("aria-disabled", "true");
+          b.onclick = onPick;
+          list.appendChild(b);
+        };
+        const group = (text: string) => {
+          const h = document.createElement("p");
+          h.className = "camp-group";
+          h.textContent = text;
+          list.appendChild(h);
+        };
+        const render = () => {
+          purse.textContent = sim.purseText() + (sim.armor > 0 ? ` · Plate ${Math.round(sim.armor)}` : "");
+          list.replaceChildren();
+          const e = sim.economy;
+          if (tab === "buy") {
+            group("Weapons (owned weapons can be picked at any camp)");
+            for (const id of Object.keys(WEAPONS) as WeaponId[]) {
+              const w = WEAPONS[id];
+              const owned = e.owned.includes(id);
+              const inHand = sim.weapons[w.slot]?.id === id;
+              const cost = owned ? (inHand ? "Equipped" : "Owned: equip") : costText(prices.weapon(id));
+              row(`${w.name} (${w.slot === "sidearm" ? "sidearm" : "long gun"})`, cost, owned ? !inHand : canAfford(e, prices.weapon(id)), () =>
+                owned ? say(sim.campEquip(id), `${w.name} equipped.`) : say(sim.campBuyWeapon(id), `Bought the ${w.name}.`),
+              );
+            }
+            group("Supplies");
+            const cur = sim.activeWeapon();
+            row(`Ammo for ${cur ? WEAPONS[cur.id].name : "your gun"}`, costText(prices.ammo), canAfford(e, prices.ammo), () => say(sim.campBuyAmmo(), "Ammo bought."));
+          } else if (tab === "craft") {
+            group("Craft from parts and powder");
+            for (const id of Object.keys(RECIPES) as CraftId[]) {
+              const r = RECIPES[id];
+              const c = prices.craft(id);
+              row(r.name, costText(c), canAfford(e, c), () => say(sim.campCraft(id), `Crafted: ${r.name}.`), r.description);
+            }
+            const inv = document.createElement("p");
+            inv.className = "camp-group";
+            inv.textContent = `Carrying: ${sim.grenades} grenades, ${sim.bottles} bottles`;
+            list.appendChild(inv);
+          } else {
+            group("Pick a weapon you own");
+            for (const id of e.owned) {
+              const sel = id === pickWeapon;
+              row(`${sel ? "▶ " : ""}${WEAPONS[id].name}`, sel ? "Selected" : "Select", true, () => {
+                pickWeapon = id;
+                note.textContent = "";
+                render();
+              });
+            }
+            group(`Upgrades for the ${WEAPONS[pickWeapon].name}`);
+            for (const t of TRACKS) {
+              const tier = e.upgrades[pickWeapon]?.[t] ?? 0;
+              const c = prices.upgrade(pickWeapon, t);
+              const pips = "●".repeat(tier) + "○".repeat(MAX_TIER - tier);
+              row(`${TRACK_NAMES[t]} ${pips}`, c ? costText(c) : "Maxed", !!c && canAfford(e, c), () => say(sim.campUpgrade(pickWeapon, t), `${TRACK_NAMES[t]} upgraded to tier ${tier + 1}.`), TRACK_HELP[t]);
+            }
+          }
+        };
+        const select = (t: typeof tab) => {
+          tab = t;
+          note.textContent = "";
+          el.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === t)));
+          render();
+        };
+        el.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((b) => (b.onclick = () => select(b.dataset.tab as typeof tab)));
+        select("buy");
+      },
+      action: (a) => {
+        if (a === "leave") this.closeCamp();
+      },
+      back: () => {
+        this.closeCamp();
+        return false;
+      },
+    });
+  }
+
+  private closeCamp(): void {
+    if (this.state !== "camp" || !this.sim) return;
+    this.sim.closeCamp();
+    this.dispatchEvents();
+    this.state = "paused"; // resume() expects a paused game
+    this.resume();
+  }
+
   // ------------------------------------------------------------------ story choices
 
   private choiceKeys: ((e: KeyboardEvent) => void) | null = null;
@@ -922,6 +1062,7 @@ export class Game {
     const storyAfter = sim.finishedStory();
     if (this.save) {
       this.save.story = storyAfter;
+      this.save.economy = cloneEconomy(sim.economy);
       const prev = this.save.chapters[sim.chapter.id];
       this.save.chapters[sim.chapter.id] = {
         completed: true,
@@ -1005,6 +1146,8 @@ export class Game {
     this.save.difficulty = this.settings.gameplay.difficulty;
     if (this.sim && !this.sim.completed) {
       this.save.snapshot = this.lastSnapshot;
+      // The purse follows the last checkpoint, like everything else mid-chapter.
+      if (this.lastSnapshot?.economy) this.save.economy = cloneEconomy(this.lastSnapshot.economy);
       this.save.journal = [...new Set([...this.save.journal, ...this.sim.journal])];
       const prog = this.save.chapters[this.sim.chapter.id] ?? { completed: false, treasures: [], medals: [] };
       prog.treasures = [...new Set([...prog.treasures, ...this.sim.treasures])];
@@ -1039,6 +1182,9 @@ export class Game {
       case "checkpoint":
         this.lastSnapshot = this.sim!.snapshot();
         void this.persist();
+        break;
+      case "campOpen":
+        this.openCamp(ev.label);
         break;
       case "playerDied":
         this.deathTimer = 1.6;
@@ -1150,7 +1296,9 @@ export class Game {
     if (!this.renderer.shouldRender(t)) return;
     const renderDt = this.lastRenderTime ? Math.min(0.1, (t - this.lastRenderTime) / 1000) : dt;
     this.lastRenderTime = t;
-    this.renderer.render(renderDt);
+    // Draw between the last two sim ticks: smooth motion on 90-144 Hz screens and uneven frames.
+    const alpha = sim && this.state === "playing" && this.hitStop <= 0 ? this.acc * TUNING.sim.hz : 1;
+    this.renderer.render(renderDt, alpha);
   };
 
   /**
@@ -1181,10 +1329,10 @@ export class Game {
   /** Feeds the left-side gun and goal cards of the touch controls. */
   private syncTouchCards(sim: GameSim): void {
     const w = sim.activeWeapon();
-    const def = w && !sim.cutscene ? WEAPONS[w.id] : null;
+    const def = w && !sim.cutscene ? defOf(w) : null;
     this.touch.setWeapon(
       w && def
-        ? { name: def.name, slot: def.slot, mag: w.mag, low: w.mag <= Math.ceil(def.magSize * 0.25), reserve: w.reserve, reloading: w.reloadLeft > 0, grenades: sim.grenades, bottles: sim.bottles }
+        ? { name: def.name, slot: def.slot, mag: w.mag, low: w.mag <= Math.ceil(def.magSize * 0.25), reserve: w.reserve, reloading: w.reloadLeft > 0, grenades: sim.grenades, bottles: sim.bottles, salvage: sim.economy.salvage }
         : null,
     );
     this.touch.setObjective(sim.cutscene ? "" : sim.objective?.text ?? "");

@@ -1,6 +1,6 @@
 // Offline support: cache the game's files the first time they load, then serve them from cache.
 // Bump the number when this file changes, so phones drop the old cache.
-const CACHE = "meridian-v4";
+const CACHE = "meridian-v5"; // v5: re-rendered panoramas and new terrain
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./index.html", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./backgrounds/key-art-sm.webp"])));

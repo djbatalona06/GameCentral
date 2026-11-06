@@ -182,7 +182,7 @@ export class World {
         ramp = undefined;
       }
     };
-    for (const b of this.boxes) if (!b.removed) test(b, b);
+    for (const b of this.boxes) if (!b.removed && !b.boundary) test(b, b);
     for (const c of this.crates) test(c);
     for (const rp of this.data.ramps) {
       const h = rampHeight(rp, x, z);
@@ -199,6 +199,7 @@ export class World {
   ceilingHeight(x: number, z: number, fromY: number, radius: number): number {
     let best = Infinity;
     for (const b of this.solids()) {
+      if ((b as RuntimeBox).boundary) continue;
       if (x + radius <= b.min.x || x - radius >= b.max.x || z + radius <= b.min.z || z - radius >= b.max.z) continue;
       if (b.min.y >= fromY - 1e-4 && b.min.y < best) best = b.min.y;
     }
@@ -208,7 +209,8 @@ export class World {
   raycast(origin: V3, dir: V3, maxT: number, opts: { ignoreCrates?: boolean } = {}): RayHit | null {
     let best: RayHit | null = null;
     for (const b of this.boxes) {
-      if (b.removed) continue;
+      // The map edge is invisible: shots, sight, sound and the camera all pass straight through.
+      if (b.removed || b.boundary) continue;
       const h = rayAabb(origin, dir, b, best ? best.t : maxT);
       if (h && (!best || h.t < best.t)) best = { t: h.t, normal: h.normal, point: v3(), box: b };
     }

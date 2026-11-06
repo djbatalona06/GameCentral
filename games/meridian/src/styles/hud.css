@@ -281,3 +281,32 @@ body.reduce-motion .hud * { animation: none !important; transition: none !import
   mask-image: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 62%, #000 100%);
 }
 body.reduce-motion #speedlines { display: none; }
+
+/* Loot purse under the ammo counter; it glows briefly when loot comes in. */
+.hud .ammo .purse { display: block; font-size: 0.8em; opacity: 0.85; margin-top: 2px; }
+.hud .ammo .purse.flash { color: #f4c84a; opacity: 1; }
+
+/* Health: the hero's bar sits under the ammo panel (top centre on touch). */
+.hud .health {
+  position: absolute;
+  right: max(78px, calc(env(safe-area-inset-right) + 70px));
+  top: calc(max(12px, env(safe-area-inset-top)) + 46px);
+  width: 220px;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.55);
+  outline: 1px solid rgba(255, 255, 255, 0.18);
+  overflow: visible;
+}
+.hud .health.hidden { display: none; }
+.hud .health .hp-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--hp-color, #3ecf8e); transition: width 0.15s; }
+.hud .health .hp-plate { position: absolute; left: 0; top: -4px; height: 3px; border-radius: 2px; background: #8fb4d9; }
+.hud .health em { position: absolute; right: 0; top: 12px; font-style: normal; font-size: var(--fs-small); color: var(--ink-dim); }
+.hud .health.low { animation: hp-pulse 1s ease-in-out infinite; }
+@keyframes hp-pulse { 50% { outline-color: rgba(255, 90, 78, 0.9); } }
+body.reduce-motion .hud .health.low { animation: none; outline-color: rgba(255, 90, 78, 0.9); }
+body.touch .hud .health { right: auto; left: 50%; transform: translateX(-50%); top: max(6px, env(safe-area-inset-top)); width: min(240px, 30vw); }
+body.touch .hud .top-stack { top: calc(max(14px, env(safe-area-inset-top)) + 18px); }
+.meter-bar.boss { width: min(420px, 100%); height: 14px; }
+.meter-bar.boss span { background: linear-gradient(90deg, #c0392b, #ff5a4e); }
+.meter-bar.boss em { color: var(--ink); font-weight: 700; }

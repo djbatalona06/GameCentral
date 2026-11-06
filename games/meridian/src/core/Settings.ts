@@ -45,6 +45,8 @@ export interface Settings {
     touchPositions: TouchPositions;
   };
   a11y: {
+    /** Health bars over enemies, the hero's bar on the HUD and boss bars. */
+    healthBars: boolean;
     subtitles: boolean;
     subtitleSize: SubtitleSize;
     subtitleBackground: number;
@@ -117,6 +119,7 @@ export const defaultSettings = (): Settings => ({
     touchPositions: {},
   },
   a11y: {
+    healthBars: true,
     subtitles: true,
     subtitleSize: "medium",
     subtitleBackground: 0.6,

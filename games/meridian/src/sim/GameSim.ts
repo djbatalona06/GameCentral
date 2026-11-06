@@ -21,7 +21,12 @@ import {
   yawDir,
   yawOf,
 } from "./math";
-import { World, inside, overlaps, rayAabb } from "./world/World";
+import { type RuntimeBox, World, inside, overlaps, rayAabb } from "./world/World";
+import { slideMove } from "./world/collide";
+import { type EconomyState, add as addResource, ammoPrice, buyWeapon, claimWeapon, cloneEconomy, craftCost, newEconomy, nextUpgradeCost, normaliseEconomy, payFor, upgrade, weaponPrice, type Result } from "./loot/Economy";
+import { type CacheTier, cacheLoot, enemyLoot, TREASURE_SALVAGE } from "./loot/LootTable";
+import { type CraftId, PLATE_ARMOR, RECIPES, RESOURCE_NAMES, type Resource } from "./loot/items";
+import type { UpgradeTrack } from "./loot/upgrades";
 import { PlayerController, type PlayerEvent } from "./player/PlayerController";
 import { type CameraState, newCamera, updateCamera } from "./player/CameraRig";
 import {
@@ -31,6 +36,7 @@ import {
   canFire,
   cancelReload,
   currentSpread,
+  defOf,
   fire,
   newWeaponState,
   shotDamage,
@@ -51,7 +57,7 @@ import { type Action, type ChapterDef, type ChoiceDef, type Line, type CameraSho
 import { type Condition, evaluate } from "./story/Conditions";
 import { type StoryState, STYLE_MIN_SECONDS, applyEffects, cloneStory, newStoryState, normaliseStory, recordChoice, styleOf } from "./story/State";
 import { choiceEvent, collectChoices } from "./story/Graph";
-import type { InteractDef, WeatherDef } from "./world/types";
+import type { InteractDef, PickupType, WeatherDef } from "./world/types";
 import { readingTime, splitCaption } from "./story/captions";
 import { CHATTER_IDLE_AFTER, Chatter, type ChatterKind } from "./story/chatter";
 
@@ -133,6 +139,10 @@ export interface Snapshot {
   story?: StoryState;
   /** Choices that were asked but not answered yet. */
   openChoices?: string[];
+  /** Salvage, parts, powder, owned weapons and upgrades at this checkpoint. Missing in older saves. */
+  economy?: EconomyState;
+  /** Field plate armour left. */
+  armor?: number;
 }
 
 export interface ChapterStats {
@@ -156,6 +166,10 @@ export type SimEvent =
   | { type: "playerDied" }
   | { type: "explosion"; pos: V3 }
   | { type: "pickup"; label: string }
+  | { type: "boundary"; near: boolean }
+  | { type: "loot"; resource: Resource; amount: number; pos: V3 }
+  | { type: "cacheOpened"; id: string; tier: CacheTier; pos: V3 }
+  | { type: "campOpen"; id: string; label: string }
   | { type: "treasure"; id: string; name: string; description: string }
   | { type: "checkpoint"; id: string; label: string }
   /** One caption. `say` is the whole line to speak aloud (set on its first caption only). */
@@ -307,10 +321,20 @@ export class GameSim {
   pursuers: Pursuer[] = [];
   private melody: Array<{ at: number; index: number; count: number; pos: V3 }> = [];
 
-  constructor(chapter: ChapterDef, opts: GameplayOptions, snapshot?: Snapshot, seed = 1234, story?: StoryState, lockStory = false) {
+  /** Purse and armoury (see loot/Economy.ts). Kept in checkpoints and in the save file. */
+  economy: EconomyState;
+  /** Field plate: damage it will still soak up. */
+  armor = 0;
+  /** Loot has its own random stream, so drops never change how enemies behave. */
+  private lootRand: () => number;
+
+  constructor(chapter: ChapterDef, opts: GameplayOptions, snapshot?: Snapshot, seed = 1234, story?: StoryState, lockStory = false, economy?: EconomyState) {
     if (!chapter.build || !chapter.script) throw new Error(`Chapter ${chapter.id} is not playable yet`);
     this.chapter = chapter;
     this.opts = opts;
+    this.economy = normaliseEconomy(snapshot?.economy ?? (economy ? cloneEconomy(economy) : newEconomy()));
+    this.armor = snapshot?.armor ?? 0;
+    this.lootRand = rng(seed ^ 0x100f);
     this.lockStory = lockStory;
     this.story = normaliseStory(snapshot?.story ?? story);
     for (const c of collectChoices(chapter.script)) this.choiceDefs.set(c.id, c);
@@ -356,11 +380,19 @@ export class GameSim {
   private applyLoadout(): void {
     const lo = this.chapter.script!.startLoadout;
     const ammo = (n: number | undefined, id: WeaponId) => Math.round((n ?? WEAPONS[id].reserveMax / 2) * this.opts.ammoScale);
-    this.weapons.sidearm = lo.sidearm ? newWeaponState(lo.sidearm, ammo(lo.sidearmAmmo, lo.sidearm)) : null;
-    this.weapons.long = lo.long ? newWeaponState(lo.long, ammo(lo.longAmmo, lo.long)) : null;
+    this.weapons.sidearm = lo.sidearm ? this.makeWeapon(lo.sidearm, ammo(lo.sidearmAmmo, lo.sidearm)) : null;
+    this.weapons.long = lo.long ? this.makeWeapon(lo.long, ammo(lo.longAmmo, lo.long)) : null;
+    // The chapter's weapons count as found: they can be picked at camps from now on.
+    if (lo.sidearm) claimWeapon(this.economy, lo.sidearm);
+    if (lo.long) claimWeapon(this.economy, lo.long);
     this.weapons.active = this.weapons.long ? "long" : "sidearm";
     this.grenades = lo.grenades;
     this.bottles = lo.bottles;
+  }
+
+  /** A fresh weapon with this weapon type's camp upgrades applied. */
+  private makeWeapon(id: WeaponId, reserve?: number): WeaponState {
+    return newWeaponState(id, reserve, this.economy.upgrades[id]);
   }
 
   snapshot(): Snapshot {
@@ -382,6 +414,8 @@ export class GameSim {
       pending: this.scheduled.filter((x): x is { at: number; event: string } => "event" in x).map((x) => ({ event: x.event, in: Math.max(0, x.at - this.time) })),
       story: cloneStory(this.story),
       openChoices: [...(this.pendingChoice ? [this.pendingChoice.id] : []), ...this.choiceQueue.map((c) => c.id)],
+      economy: cloneEconomy(this.economy),
+      armor: this.armor,
     };
   }
 
@@ -402,7 +436,7 @@ export class GameSim {
       const acts = this.chapter.script!.events[ev] ?? [];
       this.runActions(acts.filter((a) => WORLD_ACTIONS.includes(a.type) || a.type === "remove"));
     }
-    const mk = (x: { id: WeaponId; mag: number; reserve: number } | null): WeaponState | null => (x ? { ...newWeaponState(x.id, x.reserve), mag: x.mag } : null);
+    const mk = (x: { id: WeaponId; mag: number; reserve: number } | null): WeaponState | null => (x ? { ...this.makeWeapon(x.id, x.reserve), mag: x.mag } : null);
     this.weapons = { sidearm: mk(s.loadout.sidearm), long: mk(s.loadout.long), active: s.loadout.active };
     this.grenades = s.loadout.grenades;
     this.bottles = s.loadout.bottles;
@@ -660,8 +694,10 @@ export class GameSim {
     const slot = WEAPONS[id].slot;
     const cur = this.weapons[slot];
     if (cur && cur.id === id) cur.reserve = Math.min(WEAPONS[id].reserveMax, cur.reserve + (ammo ?? WEAPONS[id].magSize));
-    else this.weapons[slot] = newWeaponState(id, Math.round((ammo ?? WEAPONS[id].reserveMax / 2) * this.opts.ammoScale));
+    else this.weapons[slot] = this.makeWeapon(id, Math.round((ammo ?? WEAPONS[id].reserveMax / 2) * this.opts.ammoScale));
     this.weapons.active = slot;
+    // A gun you have carried is yours: it can be picked at camps from now on.
+    claimWeapon(this.economy, id);
     this.emit({ type: "swap", weapon: id });
   }
 
@@ -700,8 +736,47 @@ export class GameSim {
 
   // ---------------------------------------------------------------- main step
 
+  /**
+   * Where things were at the start of the latest tick. The renderer draws a blend between this and
+   * the current state, so motion is smooth on screens faster than the 60 Hz simulation.
+   */
+  readonly prev = {
+    player: { x: 0, y: 0, z: 0 },
+    playerYaw: 0,
+    cam: { x: 0, y: 0, z: 0 },
+    camYaw: 0,
+    camPitch: 0,
+    enemies: new Map<string, { x: number; y: number; z: number; yaw: number }>(),
+    valid: false,
+  };
+
+  private capturePrev(): void {
+    const pr = this.prev;
+    const p = this.player;
+    pr.player.x = p.pos.x;
+    pr.player.y = p.pos.y;
+    pr.player.z = p.pos.z;
+    pr.playerYaw = p.yaw;
+    pr.cam.x = this.cam.position.x;
+    pr.cam.y = this.cam.position.y;
+    pr.cam.z = this.cam.position.z;
+    pr.camYaw = this.cam.yaw;
+    pr.camPitch = this.cam.pitch;
+    for (const e of this.enemies) {
+      const o = pr.enemies.get(e.id);
+      if (o) {
+        o.x = e.pos.x;
+        o.y = e.pos.y;
+        o.z = e.pos.z;
+        o.yaw = e.yaw;
+      } else pr.enemies.set(e.id, { x: e.pos.x, y: e.pos.y, z: e.pos.z, yaw: e.yaw });
+    }
+    pr.valid = true;
+  }
+
   step(dt: number, input: InputFrame): void {
     if (this.completed) return;
+    this.capturePrev();
     if (this.pendingChoice) {
       // The world waits while the player answers.
       this.tickChoice(dt);
@@ -771,7 +846,9 @@ export class GameSim {
 
     if (riding) this.updateVehicle(dt, input);
     else {
-      p.update(dt, input, this.cam.yaw, this.world, this.aiming, { autoTraversal: this.opts.autoTraversal, holdToToggle: false, faceCamera: this.faceCamera(input) });
+      // Move relative to where the camera is about to look this tick, not where it looked last tick.
+      const moveYaw = this.cam.yaw + lookYaw;
+      p.update(dt, input, moveYaw, this.world, this.aiming, { autoTraversal: this.opts.autoTraversal, holdToToggle: false, faceCamera: this.faceCamera(input), holdCrouch: this.holdCrouch });
       this.applyWind(dt);
     }
     for (const ev of p.events) this.onPlayerEvent(ev);
@@ -796,6 +873,7 @@ export class GameSim {
     this.updateEnemies(dt);
     this.updatePursuers(dt);
     this.updateHazards(dt);
+    this.updateBoundary();
     this.updateSearchlights(dt);
     this.updateWorldTriggers();
     this.updatePuzzles(dt);
@@ -842,6 +920,9 @@ export class GameSim {
   }
 
   /** Shooter style: keyboard-and-mouse players turn the hero with the mouse. */
+  /** Controls setting: crouch while the button is held (false = press to toggle). Set by the game. */
+  holdCrouch = false;
+
   private faceCamera(input: InputFrame): boolean {
     return input.device === "keyboard" && this.opts.desktopStyle === "shooter";
   }
@@ -873,8 +954,9 @@ export class GameSim {
     const t = Math.min(1, cs.t / shot.duration);
     const e = t * t * (3 - 2 * t);
     this.cam.rail = { position: add(shot.from, scale(sub(shot.to, shot.from), e)), target: shot.target };
-    if (input.buttons.pause.pressed || input.buttons.jump.pressed) {
+    if (input.buttons.jump.pressed) {
       // Skipping is handled by the UI's "hold to skip"; jump advances to the next shot.
+      // (Pause opens the pause menu as usual; the game catches it before the sim steps.)
       cs.t = shot.duration;
     }
     if (cs.t >= shot.duration) {
@@ -900,7 +982,27 @@ export class GameSim {
   }
 
   makeNoise(noise: Noise): void {
-    for (const e of this.enemies) e.hear(noise);
+    const src = add(noise.pos, { x: 0, y: 0.5, z: 0 });
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      // Walls muffle sound: through solid stone a noise carries less than half as far.
+      const blocked = dist(e.pos, noise.pos) <= noise.radius && !this.world.lineOfSight(src, e.eye);
+      e.hear(blocked ? { ...noise, radius: noise.radius * TUNING.wallMuffle } : noise);
+    }
+  }
+
+  /** True when the player is tucked into cover and the cover sits between her and `from`. */
+  coverProtects(from: V3): boolean {
+    const p = this.player;
+    const c = p.cover;
+    if (p.mode !== "cover" || !c) return false;
+    if ((c.box as RuntimeBox).removed) return false;
+    const tucked = c.low ? p.crouched : Math.abs(c.peekOffset) < 0.3;
+    if (!tucked) return false;
+    const d = sub(from, p.pos);
+    const l = Math.hypot(d.x, d.z) || 1;
+    // The cover's normal points from the box toward the player; the shooter must be on the far side.
+    return (c.normal.x * d.x + c.normal.z * d.z) / l < -0.2;
   }
 
   // ---------------------------------------------------------------- shooting
@@ -923,7 +1025,7 @@ export class GameSim {
     }
     if (input.buttons.reload.pressed && startReload(w)) this.emit({ type: "reload", weapon: w.id });
 
-    const def = WEAPONS[w.id];
+    const def = defOf(w);
     const blindFire = p.mode === "cover" && !this.aiming;
     const autoFire = this.opts.autoFireOnTarget && this.aiming && this.reticleOnEnemy();
     const wantsFire = autoFire || (def.automatic ? input.buttons.fire.held : input.buttons.fire.pressed);
@@ -988,7 +1090,8 @@ export class GameSim {
           this.onEnemyKilled(res.enemy, res.headshot);
         }
       } else if (res.box) {
-        if (this.world.damageBox(res.box, def.damage)) this.onBoxDestroyed(res.box);
+        const k = TUNING.coverDamage[res.box.material] ?? 0.6;
+        if (this.world.damageBox(res.box, def.damage * k)) this.onBoxDestroyed(res.box);
       }
     }
     if (anyHit) {
@@ -1072,6 +1175,8 @@ export class GameSim {
     if (e.weapon && this.rand() < 0.85) {
       this.dynamicPickups.push({ id: `drop-${e.id}`, pos: { ...e.pos, y: e.pos.y + 0.3 }, weapon: e.weapon, amount: Math.ceil(WEAPONS[e.weapon].magSize * 0.7 * this.opts.ammoScale) });
     }
+    // ...and salvage, parts or powder (see loot/LootTable.ts).
+    this.dropLoot(enemyLoot(e.def.id, this.lootRand, this.opts.ammoScale), e.pos, `loot-${e.id}`);
     void headshot;
     const before = new Map(this.waveAlive);
     this.recountAlive();
@@ -1080,7 +1185,23 @@ export class GameSim {
     if (!this.arenaAlive.get(e.spawn.arena)) this.fireEvent(`arenaClear:${e.spawn.arena}`);
   }
 
-  dynamicPickups: Array<{ id: string; pos: V3; weapon: WeaponId; amount: number }> = [];
+  dynamicPickups: Array<{ id: string; pos: V3; weapon?: WeaponId; resource?: Resource; amount: number }> = [];
+
+  /** Scatters loot on the ground around a point; it is collected by walking over it. */
+  private dropLoot(drops: Array<{ resource: Resource; amount: number }>, at: V3, idBase: string): void {
+    drops.forEach((d, i) => {
+      const a = (i / Math.max(1, drops.length)) * Math.PI * 2 + 0.6;
+      const pos = { x: at.x + Math.sin(a) * 0.6, y: at.y, z: at.z + Math.cos(a) * 0.6 };
+      const g = this.world.groundHeight(pos.x, pos.z, at.y + 1);
+      pos.y = (Number.isFinite(g.y) ? g.y : at.y) + 0.3;
+      this.dynamicPickups.push({ id: `${idBase}-${i}`, pos, resource: d.resource, amount: d.amount });
+    });
+  }
+
+  private collectResource(r: Resource, n: number, pos: V3): void {
+    addResource(this.economy, r, n);
+    this.emit({ type: "loot", resource: r, amount: n, pos });
+  }
 
   private onBoxDestroyed(box: import("./world/World").RuntimeBox): void {
     const c = { x: (box.min.x + box.max.x) / 2, y: (box.min.y + box.max.y) / 2, z: (box.min.z + box.max.z) / 2 };
@@ -1115,6 +1236,17 @@ export class GameSim {
 
   hurtPlayer(amount: number, from: V3): void {
     if (this.dead || this.opts.invulnerable || this.player.iFrames > 0 || this.cutscene) return;
+    // A field plate soaks up damage first.
+    if (this.armor > 0) {
+      const soak = Math.min(this.armor, amount);
+      this.armor -= soak;
+      amount -= soak;
+      if (this.armor <= 0) this.emit({ type: "pickup", label: "Field plate broken" });
+      if (amount <= 0) {
+        this.emit({ type: "playerHurt", fromYaw: yawOf(sub(from, this.player.pos)), amount: 0 });
+        return;
+      }
+    }
     const killed = applyDamage(this.health, amount);
     const fromYaw = yawOf(sub(from, this.player.pos));
     this.emit({ type: "playerHurt", fromYaw, amount });
@@ -1309,15 +1441,20 @@ export class GameSim {
     // Auto-pick up ammo and throwables; weapons of a different type need a button press.
     const pickups = [
       ...this.world.data.pickups.filter((k) => !this.pickupsTaken.has(k.id)).map((k) => ({ ...k, dynamic: false })),
-      ...this.dynamicPickups.map((k) => ({ ...k, type: "weapon" as const, dynamic: true })),
+      ...this.dynamicPickups.map((k) => ({ ...k, type: (k.resource ?? "weapon") as PickupType, dynamic: true })),
     ];
     for (const k of pickups) {
-      if (dist(k.pos, add(p.pos, { x: 0, y: 0.4, z: 0 })) > 1.4) continue;
+      // Loot is pulled in from a little further away, so you don't have to stand on every coin.
+      const reach = k.type === "salvage" || k.type === "parts" || k.type === "powder" ? 2.2 : 1.4;
+      if (dist(k.pos, add(p.pos, { x: 0, y: 0.4, z: 0 })) > reach) continue;
       const take = () => {
         if (k.dynamic) this.dynamicPickups = this.dynamicPickups.filter((d) => d.id !== k.id);
         else this.pickupsTaken.add(k.id);
       };
-      if (k.type === "ammo") {
+      if (k.type === "salvage" || k.type === "parts" || k.type === "powder") {
+        this.collectResource(k.type, k.amount, k.pos);
+        take();
+      } else if (k.type === "ammo") {
         const w = this.activeWeapon();
         if (w) {
           w.reserve = Math.min(WEAPONS[w.id].reserveMax, w.reserve + Math.round(k.amount * this.opts.ammoScale));
@@ -1362,6 +1499,7 @@ export class GameSim {
       if (pressed || this.opts.autoPickup) {
         this.treasures.add(t.id);
         this.chatterTreasure = true;
+        this.collectResource("salvage", TREASURE_SALVAGE, t.pos);
         this.emit({ type: "treasure", id: t.id, name: t.name, description: t.description });
         return;
       }
@@ -1423,8 +1561,24 @@ export class GameSim {
   }
 
   private useInteract(i: InteractDef): void {
+    if (i.kind === "camp") {
+      this.openCamp(i);
+      return;
+    }
     if (i.once) this.interactsUsed.add(i.id);
     this.emit({ type: "interact", kind: i.kind, pos: i.pos });
+    if (i.kind === "cache") {
+      const tier = i.tier ?? "common";
+      this.emit({ type: "cacheOpened", id: i.id, tier, pos: i.pos });
+      this.dropLoot(cacheLoot(tier, this.lootRand, this.opts.ammoScale), { ...i.pos, y: i.pos.y - 0.5 }, `cache-${i.id}`);
+      // Rare and boundary caches also hold a little ammo or a throwable.
+      if (tier !== "common") {
+        const w = this.activeWeapon();
+        if (w) w.reserve = Math.min(WEAPONS[w.id].reserveMax, w.reserve + defOf(w).magSize);
+        if (tier === "boundary" && this.grenades < 3) this.grenades++;
+      }
+      return;
+    }
     for (const pz of this.puzzles) {
       if (pz.def.type === "bells" && (pz.def.listen === i.id || pz.def.bells.includes(i.id))) {
         this.useBell(pz, i);
@@ -1448,6 +1602,108 @@ export class GameSim {
       }
     }
     this.fireEvent(i.event);
+  }
+
+  // ---------------------------------------------------------------- camps (buy, craft, upgrade)
+
+  /** The camp the player is using, while its screen is open. */
+  camp: { id: string; label: string } | null = null;
+
+  /** Camps only work when no fight is going on nearby. */
+  campBlocked(): string | null {
+    const p = this.player;
+    if (this.enemies.some((e) => e.alive && e.state === "combat" && (dist(e.pos, p.pos) < 40 || e.visibleNow))) return "Not while enemies are hunting you.";
+    return null;
+  }
+
+  private openCamp(i: InteractDef): void {
+    const blocked = this.campBlocked();
+    if (blocked) {
+      this.emit({ type: "pickup", label: blocked });
+      return;
+    }
+    this.camp = { id: i.id, label: i.label };
+    this.emit({ type: "interact", kind: i.kind, pos: i.pos });
+    // Resting at camp saves your progress (and your purse) at the current checkpoint.
+    this.emit({ type: "checkpoint", id: this.checkpointId, label: i.label.replace(/^(Rest at|Use) /, "") });
+    this.emit({ type: "campOpen", id: i.id, label: i.label });
+  }
+
+  closeCamp(): void {
+    if (!this.camp) return;
+    this.camp = null;
+    this.emit({ type: "checkpoint", id: this.checkpointId, label: "Camp" });
+  }
+
+  /** Buy a weapon to own it; it is equipped straight away. */
+  campBuyWeapon(id: WeaponId): Result {
+    const r = buyWeapon(this.economy, id, this.opts.difficulty);
+    if (r.ok) this.campEquip(id);
+    return r;
+  }
+
+  /** Swap to a weapon you own (fresh magazine, half the spare ammo). */
+  campEquip(id: WeaponId): Result {
+    if (!this.economy.owned.includes(id)) return { ok: false, reason: "You don't own it yet." };
+    const slot = WEAPONS[id].slot;
+    if (this.weapons[slot]?.id === id) {
+      this.weapons.active = slot;
+      return { ok: true };
+    }
+    this.weapons[slot] = this.makeWeapon(id, Math.round((WEAPONS[id].reserveMax / 2) * this.opts.ammoScale));
+    this.weapons.active = slot;
+    this.emit({ type: "swap", weapon: id });
+    return { ok: true };
+  }
+
+  /** One magazine of spare ammo for the weapon in your hands. */
+  campBuyAmmo(): Result {
+    const w = this.activeWeapon();
+    if (!w) return { ok: false, reason: "No weapon to load." };
+    if (w.reserve >= WEAPONS[w.id].reserveMax) return { ok: false, reason: "Ammo is full." };
+    const r = payFor(this.economy, ammoPrice(this.opts.difficulty));
+    if (r.ok) w.reserve = Math.min(WEAPONS[w.id].reserveMax, w.reserve + defOf(w).magSize);
+    return r;
+  }
+
+  campCraft(id: CraftId): Result {
+    const full = (id === "grenade" && this.grenades >= 3) || (id === "bottle" && this.bottles >= 3) || (id === "plate" && this.armor >= PLATE_ARMOR);
+    if (full) return { ok: false, reason: `You can't carry more.` };
+    if (id === "ammo" && ![this.weapons.sidearm, this.weapons.long].some((w) => w && w.reserve < WEAPONS[w.id].reserveMax)) return { ok: false, reason: "Ammo is full." };
+    const r = payFor(this.economy, craftCost(id, this.opts.difficulty));
+    if (!r.ok) return r;
+    if (id === "ammo") for (const w of [this.weapons.sidearm, this.weapons.long]) if (w) w.reserve = Math.min(WEAPONS[w.id].reserveMax, w.reserve + defOf(w).magSize);
+    if (id === "grenade") this.grenades++;
+    if (id === "bottle") this.bottles++;
+    if (id === "plate") this.armor = PLATE_ARMOR;
+    this.emit({ type: "pickup", label: `Crafted: ${RECIPES[id].name}` });
+    return r;
+  }
+
+  campUpgrade(id: WeaponId, track: UpgradeTrack): Result {
+    const r = upgrade(this.economy, id, track, this.opts.difficulty);
+    if (!r.ok) return r;
+    // Weapons in hand pick up the new stats at once (the tiers object is shared).
+    const tiers = this.economy.upgrades[id];
+    for (const w of [this.weapons.sidearm, this.weapons.long]) if (w && w.id === id) w.tiers = tiers;
+    return r;
+  }
+
+  /** Prices for the camp screen (they follow difficulty). */
+  campPrices() {
+    const d = this.opts.difficulty;
+    return {
+      weapon: (id: WeaponId) => weaponPrice(id, d),
+      ammo: ammoPrice(d),
+      craft: (id: CraftId) => craftCost(id, d),
+      upgrade: (id: WeaponId, t: UpgradeTrack) => nextUpgradeCost(this.economy, id, t, d),
+    };
+  }
+
+  /** "120 Salvage · 4 Parts · 6 Powder" for the HUD and camp screen. */
+  purseText(): string {
+    const e = this.economy;
+    return (["salvage", "parts", "powder"] as const).map((r) => `${e[r]} ${RESOURCE_NAMES[r]}`).join(" · ");
   }
 
   // ---------------------------------------------------------------- tagging, triggers, puzzles
@@ -1560,8 +1816,27 @@ export class GameSim {
       sightScale: this.weather?.sightScale ?? 1,
       shoot: (e, hit, damage, target) => {
         const from = add(e.pos, { x: 0, y: e.crouching ? 1.0 : e.def.height - 0.35, z: 0 });
+        // Tucked in behind cover on the side facing the shooter: most bullets hit the cover instead.
+        if (hit && this.coverProtects(from)) {
+          const pc = this.player.cover!;
+          const box = pc.box as RuntimeBox;
+          if (this.rand() >= (pc.low ? TUNING.cover.protectLow : TUNING.cover.protectHigh)) {
+            hit = false;
+            const k = TUNING.coverDamage[box.material] ?? 0.6;
+            if (this.world.damageBox(box, damage * 0.5 * k)) this.onBoxDestroyed(box);
+          }
+        }
         const miss = add(target, { x: (this.rand() - 0.5) * 1.6, y: (this.rand() - 0.3) * 1.2, z: (this.rand() - 0.5) * 1.6 });
-        const to = hit ? target : miss;
+        let to = hit ? target : miss;
+        if (!hit) {
+          // A miss stops at the first wall in its way instead of flying through it.
+          const d = sub(miss, from);
+          const l = Math.hypot(d.x, d.y, d.z);
+          if (l > 1e-3) {
+            const wall = this.world.raycast(from, scale(d, 1 / l), l, { ignoreCrates: false });
+            if (wall) to = wall.point;
+          }
+        }
         this.emit({ type: "shot", from, to, byPlayer: false, weapon: e.weapon ?? "pistol", hit });
         this.emit({ type: "sound", kind: "gunshot", pos: from });
         if (hit) this.hurtPlayer(damage, from);
@@ -1604,7 +1879,53 @@ export class GameSim {
       dt,
       this.enemies.map((e) => ({ id: e.id, arena: e.spawn.arena, alive: e.alive, distanceToPlayer: dist(e.pos, p.pos), wantsToShoot: e.wantsToShoot, lastShotAgo: e.lastShotAgo })),
     );
+    this.separateBodies();
   }
+
+  /** The hero and enemies are solid to each other: nobody walks through anybody. */
+  private separateBodies(): void {
+    const p = this.player;
+    if (!["ground", "air", "cover", "crate"].includes(p.mode)) return;
+    const minGap = TUNING.player.radius + 0.3;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      if (Math.abs(e.pos.y - p.pos.y) > 1.5) continue;
+      const dx = p.pos.x - e.pos.x;
+      const dz = p.pos.z - e.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d >= minGap) continue;
+      const push = minGap - d;
+      const nx = d > 1e-4 ? dx / d : Math.sin(p.yaw + Math.PI);
+      const nz = d > 1e-4 ? dz / d : Math.cos(p.yaw + Math.PI);
+      // The hero gives way most of the distance; enemies are heavier.
+      const to = { x: p.pos.x + nx * push * 0.7, y: p.pos.y, z: p.pos.z + nz * push * 0.7 };
+      p.pos = slideMove(this.world, p.pos, to, TUNING.player.radius, p.height - 0.05);
+      e.pos = slideMove(this.world, e.pos, { x: e.pos.x - nx * push * 0.3, y: e.pos.y, z: e.pos.z - nz * push * 0.3 }, 0.3, e.def.height);
+    }
+  }
+
+  /** Warn the player when she nears the invisible edge of the map. */
+  private updateBoundary(): void {
+    const p = this.player;
+    const warn = TUNING.boundaryWarn;
+    let near = false;
+    this.boundaries ??= this.world.boxes.filter((b) => b.boundary);
+    for (const b of this.boundaries) {
+      const dx = Math.max(b.min.x - p.pos.x, 0, p.pos.x - b.max.x);
+      const dz = Math.max(b.min.z - p.pos.z, 0, p.pos.z - b.max.z);
+      if (Math.hypot(dx, dz) < warn && p.pos.y < b.max.y && p.pos.y > b.min.y - 5) {
+        near = true;
+        break;
+      }
+    }
+    if (near && !this.nearBoundary) this.emit({ type: "boundary", near: true });
+    if (!near && this.nearBoundary) this.emit({ type: "boundary", near: false });
+    this.nearBoundary = near;
+  }
+
+  /** True while the hero is close to the edge of the map. */
+  nearBoundary = false;
+  private boundaries: RuntimeBox[] | null = null;
 
   // ---------------------------------------------------------------- bells
 
@@ -1745,7 +2066,11 @@ export class GameSim {
   private updateVehicle(dt: number, input: InputFrame): void {
     const v = this.vehicle!;
     const p = this.player;
-    const evs = stepVehicle(v, { steer: input.move.x, throttle: input.move.y, boost: input.buttons.sprint.held }, this.world, dt, this.time);
+    // Walk mode halves the stick for walking; the jeep always gets full steering and throttle.
+    const k = input.walk ? 2 : 1;
+    const steer = clamp(input.move.x * k, -1, 1);
+    const throttle = clamp(input.move.y * k, -1, 1);
+    const evs = stepVehicle(v, { steer, throttle, boost: input.buttons.sprint.held }, this.world, dt, this.time);
     const at = trackAt(v.track, v.s);
     p.pos = seatPos(v);
     p.vel = scale(at.dir, v.speed);

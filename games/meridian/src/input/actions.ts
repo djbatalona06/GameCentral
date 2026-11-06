@@ -35,6 +35,8 @@ export interface InputFrame {
   buttons: Record<ButtonAction, ButtonState>;
   /** Which device produced the most recent input (drives on-screen prompts). */
   device: "touch" | "gamepad" | "keyboard";
+  /** True when walk mode halved `move` (vehicles undo that, so the jeep keeps full steering). */
+  walk?: boolean;
 }
 
 export const emptyButtons = (): Record<ButtonAction, ButtonState> => {
@@ -108,4 +110,4 @@ export const DEFAULT_PAD: Record<ButtonAction, number[]> = {
 };
 
 /** Holding inputs that accessibility settings can turn into toggles. */
-export const TOGGLEABLE: ButtonAction[] = ["aim", "sprint", "crouch", "fire"];
+export const TOGGLEABLE: ButtonAction[] = ["aim", "sprint", "crouch"];

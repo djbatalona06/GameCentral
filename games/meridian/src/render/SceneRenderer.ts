@@ -20,6 +20,7 @@ import "@babylonjs/core/Rendering/depthRendererSceneComponent";
 import "@babylonjs/core/Rendering/geometryBufferRendererSceneComponent";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
@@ -33,7 +34,9 @@ import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3, Vector4 } from "@babylonjs/core/Maths/math.vector";
 
 import type { GameSim, SimEvent } from "../sim/GameSim";
-import { lookDir, type V3 } from "../sim/math";
+import { angleDiff, lookDir, type V3 } from "../sim/math";
+import { coverMesh } from "./CoverKit";
+import { loadTerrain } from "./Terrain";
 import { fovForAspect } from "../sim/player/CameraRig";
 import type { BoxDef, Material as MatName } from "../sim/world/types";
 import type { RuntimeBox } from "../sim/world/World";
@@ -50,7 +53,7 @@ import { proceduralPBR } from "./materials/ProceduralPBR";
 import { createSky, luminance, panoramaUrl } from "./Sky";
 import { createWaterMaterial } from "./WaterShader";
 import { Figure, OUTFITS, outfitFor, type Anim, type FigureLook, type Outfit } from "./Figure";
-import { bellMesh, jeepMesh } from "./meshUtil";
+import { bellMesh, boxShape, cylShape, jeepMesh, mergeShapes } from "./meshUtil";
 import { Hazards, Scrolling, Searchlights, Weather } from "./SetPieces";
 import { Ambient } from "./Ambient";
 import { Juice } from "./Juice";
@@ -62,6 +65,10 @@ interface EnemyVisual {
   fig: Figure;
   meter: Mesh;
   meterMat: StandardMaterial;
+  /** Health bar over the head: a dark back plate and a coloured fill (billboarded together). */
+  hpRoot: TransformNode;
+  hpFill: Mesh;
+  hpMat: StandardMaterial;
   laser: Mesh;
   last: Vector3;
   speed: number;
@@ -71,6 +78,7 @@ interface PursuerVisual {
   jeep: Mesh;
   gunner: Figure;
   driver: Figure;
+  hp: { root: TransformNode; fill: Mesh; mat: StandardMaterial };
 }
 
 interface Fx {
@@ -116,6 +124,10 @@ export class SceneRenderer {
   private interactMeshes = new Map<string, Mesh>();
   private bellMeshes = new Map<string, { mesh: Mesh; swing: number; flash: number }>();
   private dropMeshes = new Map<string, Mesh>();
+  /** Loot crates: the lid tips open once looted. */
+  private cacheLids = new Map<string, Mesh>();
+  private dropMats = new Map<string, StandardMaterial>();
+  private hpBackMat: StandardMaterial | null = null;
   private pillarFaces = new Map<string, StandardMaterial>();
   private ropeMeshes = new Map<string, Mesh>();
   private player: Figure | null = null;
@@ -299,6 +311,8 @@ export class SceneRenderer {
 
     const swap = new AssetSwap();
     this.buildEnvironment(swap);
+    // Open land around the level (made in Blender), out to the fog and the panorama.
+    void loadTerrain(scene, sim.chapter.id, sim.world.data, { low: tier.shadows === "blob", night, fogHex: sky.fog });
     const hc = this.settings().a11y.highContrast;
     const ines = hc ? { ...OUTFITS.ines, top: PALETTE.playerHigh, bottom: PALETTE.playerHigh } : OUTFITS.ines;
     this.player = this.makeFigure("player", ines, 1.8, true);
@@ -369,7 +383,25 @@ export class SceneRenderer {
     for (const mv of data.movers) this.moverGroups.add(mv.group);
     const isDynamic = (b: BoxDef) => !!b.group || b.hp !== undefined || b.explosive || b.hidden;
 
+    const hc = this.settings().a11y.highContrast;
+    const coverKits: Mesh[] = [];
     for (const b of sim.world.boxes) {
+      // The map edge is invisible: the terrain and sky carry on past it.
+      if (b.boundary) continue;
+      // Cover gets its own look (sandbags, planks, stone, metal). High contrast keeps plain boxes.
+      if (b.cover && !b.explosive && !hc) {
+        const kit = coverMesh(scene, b);
+        kit.receiveShadows = true;
+        this.shadows?.addShadowCaster(kit);
+        if (isDynamic(b)) {
+          this.dynamicBoxes.set(b.id, kit);
+          kit.setEnabled(!b.removed);
+        } else {
+          kit.freezeWorldMatrix();
+          coverKits.push(kit);
+        }
+        continue;
+      }
       const mesh = this.boxMesh(b, b.id);
       if (b.explosive) {
         mesh.material = flatMaterial(scene, `barrel-${b.id}`, "#b8322a", { emissive: 0.08, specular: 0.3 });
@@ -404,6 +436,17 @@ export class SceneRenderer {
       const merged = Mesh.MergeMeshes(meshes, true, true, undefined, false, false);
       if (merged) {
         merged.name = `static-${mat}`;
+        merged.receiveShadows = true;
+        merged.freezeWorldMatrix();
+        merged.isPickable = false;
+        this.shadows?.addShadowCaster(merged);
+      }
+    }
+
+    if (coverKits.length > 1) {
+      const merged = Mesh.MergeMeshes(coverKits, true, true, undefined, false, false);
+      if (merged) {
+        merged.name = "static-cover";
         merged.receiveShadows = true;
         merged.freezeWorldMatrix();
         merged.isPickable = false;
@@ -525,7 +568,8 @@ export class SceneRenderer {
             ? MeshBuilder.CreateCylinder(p.id, { height: 0.35, diameter: 0.12 }, scene)
             : MeshBuilder.CreateBox(p.id, { width: p.type === "weapon" ? 0.9 : 0.4, height: 0.22, depth: 0.25 }, scene);
       m.position = v(p.pos);
-      m.material = flatMaterial(scene, `pk-${p.id}`, p.type === "ammo" ? "#3c8d40" : p.type === "weapon" ? "#2c3e50" : p.type === "grenade" ? "#556b2f" : "#7fb8a4", { emissive: 0.25 });
+      const pkColor: Record<string, string> = { ammo: "#3c8d40", weapon: "#2c3e50", grenade: "#556b2f", bottle: "#7fb8a4", salvage: "#e8b923", parts: "#9aa7b0", powder: "#c0392b" };
+      m.material = flatMaterial(scene, `pk-${p.id}`, pkColor[p.type] ?? "#7fb8a4", { emissive: p.type === "salvage" ? 0.55 : 0.25 });
       this.pickupMeshes.set(p.id, m);
     }
     const gold = flatMaterial(scene, "gold", PALETTE.treasure, { emissive: 0.6, specular: 0.8 });
@@ -560,6 +604,41 @@ export class SceneRenderer {
         h.position = v(i.pos).add(new Vector3(0, 0.2, 0.3));
         h.rotation.x = 0.5;
         h.material = flatMaterial(scene, `leverMat-${i.id}`, i.kind === "valve" ? "#c0392b" : "#b03a2e", { emissive: 0.3 });
+      }
+      if (i.kind === "cache") {
+        // A sturdy crate with brass corners; boundary caches are bigger and painted.
+        const big = i.tier === "boundary";
+        const w = big ? 1.1 : 0.8;
+        const body = mergeShapes(scene, `cache-${i.id}`, [
+          boxShape(w, 0.5, w * 0.62, 0, 0.25, 0, big ? "#2f5d7c" : "#7a5230"),
+          boxShape(w + 0.04, 0.06, w * 0.62 + 0.04, 0, 0.08, 0, "#c79a3c"),
+          boxShape(w + 0.04, 0.06, w * 0.62 + 0.04, 0, 0.42, 0, "#c79a3c"),
+        ]);
+        body.position = v(i.pos).add(new Vector3(0, -0.6, 0));
+        const lid = mergeShapes(scene, `cacheLid-${i.id}`, [boxShape(w + 0.02, 0.12, w * 0.62 + 0.02, 0, 0.06, w * 0.31, big ? "#244a63" : "#664424")]);
+        lid.parent = body;
+        lid.position.set(0, 0.5, -w * 0.31);
+        this.shadows?.addShadowCaster(body);
+        this.cacheLids.set(i.id, lid);
+      }
+      if (i.kind === "camp") {
+        // A small canvas tent, a ring of stones and a fire.
+        const base = v(i.pos).add(new Vector3(0, -0.8, 0));
+        const tent = mergeShapes(scene, `camp-${i.id}`, [
+          cylShape(0, 2.2, 2.4, 0, 0.75, 1.6, "#c8b48a", true, 3),
+          boxShape(0.1, 0.12, 0.1, -1.0, 0.06, 0, "#6b6b6b"),
+          boxShape(0.1, 0.12, 0.1, 1.0, 0.06, 0, "#6b6b6b"),
+          ...[0, 1, 2, 3, 4, 5, 6, 7].map((k) => boxShape(0.18, 0.12, 0.18, Math.sin((k / 8) * Math.PI * 2) * 0.45, 0.06, -1 + Math.cos((k / 8) * Math.PI * 2) * 0.45, "#7d7468")),
+          boxShape(0.5, 0.08, 0.08, 0, 0.1, -1, "#4a3220"),
+          boxShape(0.08, 0.08, 0.5, 0, 0.14, -1, "#4a3220"),
+          boxShape(1.2, 0.35, 0.35, 1.4, 0.18, -0.6, "#6e5434"),
+        ]);
+        tent.position = base;
+        this.shadows?.addShadowCaster(tent);
+        const fire = MeshBuilder.CreateCylinder(`campFire-${i.id}`, { height: 0.5, diameterTop: 0, diameterBottom: 0.35, tessellation: 7 }, scene);
+        fire.position = base.add(new Vector3(0, 0.38, -1));
+        fire.material = flatMaterial(scene, `campFireMat-${i.id}`, "#ff9a3c", { emissive: 1 });
+        fire.isPickable = false;
       }
       if (i.kind === "panel") {
         const box = MeshBuilder.CreateBox(`panel-${i.id}`, { width: 0.6, height: 0.8, depth: 0.2 }, scene);
@@ -639,17 +718,54 @@ export class SceneRenderer {
     lm.disableLighting = true;
     laser.material = lm;
     laser.setEnabled(false);
-    ev = { fig, meter, meterMat, laser, last: v(e.pos), speed: 0 };
+    const hpRoot = new TransformNode(`hp-${e.id}`, scene);
+    hpRoot.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    const back = MeshBuilder.CreatePlane(`hpBack-${e.id}`, { width: 0.74, height: 0.1 }, scene);
+    back.parent = hpRoot;
+    back.material = this.hpBackMat ??= (() => {
+      const m = flatMaterial(scene, "hpBack", "#000000", { emissive: 0, alpha: 0.6 });
+      m.disableLighting = true;
+      return m;
+    })();
+    const hpMat = flatMaterial(scene, `hpFill-${e.id}`, "#3ecf8e", { emissive: 1 });
+    hpMat.disableLighting = true;
+    const hpFill = MeshBuilder.CreatePlane(`hpFill-${e.id}`, { width: 0.7, height: 0.065 }, scene);
+    hpFill.parent = hpRoot;
+    hpFill.position.z = -0.002; // just in front of the back plate
+    hpFill.material = hpMat;
+    for (const m of [back, hpFill]) m.isPickable = false;
+    hpRoot.setEnabled(false);
+    ev = { fig, meter, meterMat, hpRoot, hpFill, hpMat, laser, last: v(e.pos), speed: 0 };
     this.enemies.set(e.id, ev);
     return ev;
   }
 
   // ------------------------------------------------------------------ per-frame sync
 
-  render(dt: number): void {
+  /** How far between the last two sim ticks this frame is (0..1); see GameSim.prev. */
+  private alpha = 1;
+
+  /** Blends a position from the previous tick to now. Teleports (more than 3 m in a tick) snap. */
+  private lerpPos(prev: V3 | undefined, cur: V3): V3 {
+    if (!prev || !this.sim?.prev.valid || this.alpha >= 1) return cur;
+    const dx = cur.x - prev.x;
+    const dy = cur.y - prev.y;
+    const dz = cur.z - prev.z;
+    if (dx * dx + dy * dy + dz * dz > 9) return cur;
+    const a = this.alpha;
+    return { x: prev.x + dx * a, y: prev.y + dy * a, z: prev.z + dz * a };
+  }
+
+  private lerpYaw(prev: number, cur: number): number {
+    if (!this.sim?.prev.valid || this.alpha >= 1) return cur;
+    return cur - angleDiff(prev, cur) * (1 - this.alpha);
+  }
+
+  render(dt: number, alpha = 1): void {
     const sim = this.sim;
     const scene = this.scene;
     if (!sim || !scene || !this.camera || this.contextLost) return;
+    this.alpha = Math.max(0, Math.min(1, alpha));
     this.time += dt;
     this.syncWorld(dt);
     this.syncPlayer(dt);
@@ -756,8 +872,8 @@ export class SceneRenderer {
     f.setEnabled(visible || !!sim.cutscene);
     const speed = Math.hypot(p.vel.x, p.vel.z);
     let anim = this.playerAnim(p.mode, sim.aiming || sim.throwAiming, speed, p.grounded);
-    let pos: V3 = p.pos;
-    let yaw = p.yaw;
+    let pos: V3 = this.lerpPos(sim.prev.player, p.pos);
+    let yaw = this.lerpYaw(sim.prev.playerYaw, p.yaw);
     // In the jeep the figure sits in a seat (driving) or stands at the back (gunner).
     if (p.mode === "vehicle" && sim.vehicle && this.jeep) {
       const gunner = sim.vehicle.track.def.mode === "gunner";
@@ -796,19 +912,23 @@ export class SceneRenderer {
       const f = ev.fig;
       if (!e.alive && e.deadTime > 10) {
         f.setEnabled(false);
+        ev.hpRoot.setEnabled(false);
         ev.meter.setEnabled(false);
         ev.laser.setEnabled(false);
         continue;
       }
-      const now = this.tmpA.set(e.pos.x, e.pos.y, e.pos.z);
+      const ep = this.lerpPos(sim.prev.enemies.get(e.id), e.pos);
+      const pe = sim.prev.enemies.get(e.id);
+      const eyaw = pe ? this.lerpYaw(pe.yaw, e.yaw) : e.yaw;
+      const now = this.tmpA.set(ep.x, ep.y, ep.z);
       ev.speed = dt > 0 ? Math.min(8, Vector3.Distance(now, ev.last) / dt) : 0;
       ev.last.copyFrom(now);
       // Far-away characters hold their pose to save time on phones.
       if (Vector3.Distance(now, camPos) < this.tier.animDistance || !e.alive) {
         const anim: Anim = !e.alive ? "dead" : e.state === "stunned" ? "stunned" : e.state === "combat" && e.weapon && ev.speed < 0.5 ? "aim" : ev.speed > 0.3 ? "move" : "idle";
         f.update(dt, {
-          pos: e.pos,
-          yaw: e.yaw,
+          pos: ep,
+          yaw: eyaw,
           anim,
           speed: ev.speed,
           crouch: e.crouching ? 1 : 0,
@@ -827,11 +947,23 @@ export class SceneRenderer {
         f.mesh.outlineColor.copyFromFloats(1, 0.85, 0.2);
         f.mesh.outlineWidth = 0.03;
       }
+      // Health bar: once an enemy is fighting or hurt, nearby, and the setting is on.
+      const frac = Math.max(0, e.hp / e.def.hp);
+      const showHp = e.alive && this.settings().a11y.healthBars && !sim.cutscene && (e.aware || frac < 0.999) && Vector3.Distance(now, camPos) < 45;
+      ev.hpRoot.setEnabled(showHp);
+      if (showHp) {
+        ev.hpRoot.position.set(ep.x, ep.y + e.def.height + 0.6, ep.z);
+        ev.hpFill.scaling.x = Math.max(0.001, frac);
+        ev.hpFill.position.x = -0.35 * (1 - frac);
+        const c = Color3.FromHSV(frac * 125, 0.75, frac < 0.3 ? 1 : 0.85);
+        ev.hpMat.emissiveColor.copyFrom(c);
+        ev.hpMat.diffuseColor.copyFrom(c);
+      }
       // Suspicion meter above the head.
       const showMeter = e.alive && ((e.suspicion > 0.05 && !e.aware) || (e.aware && e.sinceSeen < 1.5 && e.reactTimer > 0));
       ev.meter.setEnabled(showMeter);
       if (showMeter) {
-        ev.meter.position.set(e.pos.x, e.pos.y + e.def.height + 0.35, e.pos.z);
+        ev.meter.position.set(ep.x, ep.y + e.def.height + 0.35, ep.z);
         const s = Math.min(1, e.suspicion);
         ev.meter.scaling.x = Math.max(0.05, s);
         if (e.aware) ev.meterMat.emissiveColor.copyFromFloats(1, 0.1, 0.1);
@@ -881,6 +1013,8 @@ export class SceneRenderer {
       pv.jeep.setEnabled(show);
       pv.gunner.setEnabled(show);
       pv.driver.setEnabled(show);
+      // Enemy jeeps get a wider health bar above them.
+      this.setHpBar(pv.hp, 1.2, { x: pu.pos.x, y: pu.pos.y + 3.4, z: pu.pos.z }, pu.hp / pu.def.hp, show && this.settings().a11y.healthBars);
       if (!show) continue;
       pv.jeep.position.set(pu.pos.x, pu.pos.y, pu.pos.z);
       pv.jeep.rotation.y = pu.yaw;
@@ -892,10 +1026,45 @@ export class SceneRenderer {
     }
   }
 
+  /** A billboarded health bar (dark back plate + coloured fill), hidden until shown. */
+  private makeHpBar(id: string, width: number): { root: TransformNode; fill: Mesh; mat: StandardMaterial } {
+    const scene = this.scene!;
+    const root = new TransformNode(`hp-${id}`, scene);
+    root.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    const back = MeshBuilder.CreatePlane(`hpBack-${id}`, { width: width + 0.04, height: 0.12 }, scene);
+    back.parent = root;
+    back.material = this.hpBackMat ??= (() => {
+      const m = flatMaterial(scene, "hpBack", "#000000", { emissive: 0, alpha: 0.6 });
+      m.disableLighting = true;
+      return m;
+    })();
+    const mat = flatMaterial(scene, `hpFill-${id}`, "#3ecf8e", { emissive: 1 });
+    mat.disableLighting = true;
+    const fill = MeshBuilder.CreatePlane(`hpFill-${id}`, { width, height: 0.08 }, scene);
+    fill.parent = root;
+    fill.position.z = -0.002;
+    fill.material = mat;
+    back.isPickable = fill.isPickable = false;
+    root.setEnabled(false);
+    return { root, fill, mat };
+  }
+
+  private setHpBar(bar: { root: TransformNode; fill: Mesh; mat: StandardMaterial }, width: number, at: V3, frac: number, show: boolean): void {
+    bar.root.setEnabled(show);
+    if (!show) return;
+    const f = Math.max(0, Math.min(1, frac));
+    bar.root.position.set(at.x, at.y, at.z);
+    bar.fill.scaling.x = Math.max(0.001, f);
+    bar.fill.position.x = -(width / 2) * (1 - f);
+    const c = Color3.FromHSV(f * 125, 0.75, f < 0.3 ? 1 : 0.85);
+    bar.mat.emissiveColor.copyFrom(c);
+    bar.mat.diffuseColor.copyFrom(c);
+  }
+
   private makePursuer(pu: Pursuer): PursuerVisual {
     const jeep = jeepMesh(this.scene!, `pjeep-${pu.def.id}`, "#7a3b22", true);
     this.shadows?.addShadowCaster(jeep);
-    const pv = { jeep, gunner: this.makeFigure(`pgun-${pu.def.id}`, OUTFITS.rifleman, 1.8), driver: this.makeFigure(`pdrv-${pu.def.id}`, OUTFITS.shotgunner, 1.8) };
+    const pv = { jeep, gunner: this.makeFigure(`pgun-${pu.def.id}`, OUTFITS.rifleman, 1.8), driver: this.makeFigure(`pdrv-${pu.def.id}`, OUTFITS.shotgunner, 1.8), hp: this.makeHpBar(`pursuer-${pu.def.id}`, 1.2) };
     this.pursuers.set(pu.def.id, pv);
     return pv;
   }
@@ -943,6 +1112,10 @@ export class SceneRenderer {
       m.setEnabled(visible.has(id) && !(sim.riding && sim.world.data.interacts.find((i) => i.id === id)?.kind === "vehicle"));
       m.rotation.y = this.time * 2;
     }
+    for (const [id, lid] of this.cacheLids) {
+      const open = sim.interactsUsed.has(id);
+      lid.rotation.x += ((open ? -1.9 : 0) - lid.rotation.x) * Math.min(1, dt * 6);
+    }
     // Bells swing and glow when rung.
     for (const b of this.bellMeshes.values()) {
       b.swing = Math.max(0, b.swing - dt * 0.8);
@@ -963,15 +1136,33 @@ export class SceneRenderer {
         }
       });
     }
-    // Enemy weapon drops.
+    // Enemy weapon drops, and loot: gold salvage coins, steel parts, red powder tins.
     for (const d of sim.dynamicPickups) {
       if (!this.dropMeshes.has(d.id)) {
-        const m = MeshBuilder.CreateBox(d.id, { width: 0.8, height: 0.18, depth: 0.22 }, this.scene!);
-        m.material = flatMaterial(this.scene!, `drop-${d.id}`, "#2c3e50", { emissive: 0.3 });
+        let m: Mesh;
+        if (d.resource) {
+          const color = d.resource === "salvage" ? "#e8b923" : d.resource === "parts" ? "#9aa7b0" : "#c0392b";
+          let mat = this.dropMats.get(d.resource);
+          if (!mat) this.dropMats.set(d.resource, (mat = flatMaterial(this.scene!, `loot-${d.resource}`, color, { emissive: 0.55, specular: 0.6 })));
+          m =
+            d.resource === "salvage"
+              ? MeshBuilder.CreateCylinder(d.id, { height: 0.05, diameter: 0.26, tessellation: 12 }, this.scene!)
+              : d.resource === "parts"
+                ? MeshBuilder.CreateTorus(d.id, { diameter: 0.22, thickness: 0.06, tessellation: 10 }, this.scene!)
+                : MeshBuilder.CreateCylinder(d.id, { height: 0.2, diameter: 0.16, tessellation: 10 }, this.scene!);
+          if (d.resource === "salvage") m.rotation.x = Math.PI / 2;
+          m.material = mat;
+        } else {
+          m = MeshBuilder.CreateBox(d.id, { width: 0.8, height: 0.18, depth: 0.22 }, this.scene!);
+          m.material = flatMaterial(this.scene!, `drop-${d.id}`, "#2c3e50", { emissive: 0.3 });
+        }
+        m.isPickable = false;
         m.position = v(d.pos);
         this.dropMeshes.set(d.id, m);
       }
-      this.dropMeshes.get(d.id)!.rotation.y = this.time;
+      const m = this.dropMeshes.get(d.id)!;
+      m.rotation.y = this.time * (d.resource ? 2.2 : 1);
+      if (d.resource) m.position.y = d.pos.y + Math.sin(this.time * 3 + d.pos.x) * 0.06;
     }
     for (const [id, m] of this.dropMeshes) {
       if (!sim.dynamicPickups.some((d) => d.id === id)) {
@@ -1271,10 +1462,11 @@ export class SceneRenderer {
       cam.fov = fovForAspect(0.9, this.engine.getAspectRatio(cam));
       return;
     }
-    const cp = sim.cam.position;
+    const cp = this.lerpPos(sim.prev.cam, sim.cam.position);
     const dip = this.juice?.dip ?? 0;
     cam.position.set(cp.x + jx, cp.y + jy - dip * 0.35, cp.z);
-    const dir = lookDir(sim.cam.yaw, sim.cam.pitch);
+    const pitch = this.alpha < 1 && sim.prev.valid ? sim.prev.camPitch + (sim.cam.pitch - sim.prev.camPitch) * this.alpha : sim.cam.pitch;
+    const dir = lookDir(this.lerpYaw(sim.prev.camYaw, sim.cam.yaw), pitch);
     cam.setTarget(this.tmpB.set(cam.position.x + dir.x, cam.position.y + dir.y, cam.position.z + dir.z));
     // A slightly wider view while sprinting gives a sense of speed (off with Reduce motion).
     cam.fov = fovForAspect(sim.cam.fov * (sim.aiming ? 1 : (this.juice?.fovMul ?? 1)), this.engine.getAspectRatio(cam));
@@ -1315,6 +1507,9 @@ export class SceneRenderer {
     this.interactMeshes.clear();
     this.bellMeshes.clear();
     this.dropMeshes.clear();
+    this.cacheLids.clear();
+    this.hpBackMat = null;
+    this.dropMats.clear();
     this.pillarFaces.clear();
     this.ropeMeshes.clear();
     this.enemies.clear();

@@ -48,6 +48,9 @@ Grounded, sun-baked realism without image files: physically based materials pain
 - On a computer, "Click to look around" shows while the mouse is not captured.
 - The reticle grows with weapon spread, turns red over an enemy, and shows an X hit marker (red for a kill).
 - Red vignette = low health. Arcs = direction of damage. Labels on a ring = sounds (when sound indicators are on).
+- Under the ammo count, the **purse** shows Salvage, Parts and Powder, and flashes gold with "+12 Salvage" when loot comes in. On touch the gun card shows Salvage. Opening an edge cache shows a short toast, and walking up to the map edge shows "The map ends here" (at most every 8 seconds).
+- **Camps** use the standard menu layout: title, purse line, three tabs (Buy, Craft, Upgrade), a one-line result note that is also read aloud, and a list where each row shows its price on the right. Rows you can't afford are dimmed but still focusable, so the reason is announced. Upgrade levels show as ●●○.
+- **Cover** looks like cover: sandbags or capped stone for low cover, stone blocks or ribbed metal for high cover, planks for breakable wood.
 - A slim bar under the top HUD shows the **Spotted** meter (searchlights) or the **Jeep** condition, only when relevant.
 
 ## Screen shape

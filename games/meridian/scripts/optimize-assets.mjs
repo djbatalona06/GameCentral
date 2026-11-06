@@ -11,6 +11,21 @@ import { readdirSync, mkdirSync, statSync } from "node:fs";
 import { join, extname, basename } from "node:path";
 
 const root = new URL("..", import.meta.url).pathname;
+const kb = (n) => `${Math.round(statSync(n).size / 1024)} KB`;
+
+// --terrain: the chapter terrain made by Blender (assets-src/terrain/*.glb, see
+// assets-src/blender/render_backgrounds.py --terrain). Only quantised: no decoder needed.
+if (process.argv.includes("--terrain")) {
+  const tsrc = join(root, "assets-src", "terrain");
+  const tout = join(root, "public", "assets", "terrain");
+  mkdirSync(tout, { recursive: true });
+  for (const f of readdirSync(tsrc).filter((x) => x.endsWith(".glb"))) {
+    const target = join(tout, f);
+    execFileSync("npx", ["gltf-transform", "quantize", join(tsrc, f), target, "--quantize-position", "14", "--quantize-normal", "8", "--quantize-color", "8"], { stdio: "ignore", cwd: root });
+    console.log(`  terrain/${f}: ${kb(join(tsrc, f))} -> ${kb(target)}`);
+  }
+  process.exit(0);
+}
 const src = join(root, "assets-src");
 const out = join(root, "public", "assets");
 mkdirSync(out, { recursive: true });
@@ -28,6 +43,5 @@ for (const f of files) {
     ["gltf-transform", "optimize", join(src, f), target, "--compress", "quantize", "--texture-compress", "webp", "--texture-size", "1024", "--simplify", "false"],
     { stdio: "inherit", cwd: root },
   );
-  const kb = (n) => `${Math.round(statSync(n).size / 1024)} KB`;
   console.log(`  ${kb(join(src, f))} -> ${kb(target)}`);
 }

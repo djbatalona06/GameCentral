@@ -30,6 +30,7 @@ const x = (v: number) => `${v.toFixed(2)}x`;
 
 export const OPTIONS: Option[] = [
   // Accessibility: vision
+  { tab: "a11y", section: "Health", label: "Health bars", type: "toggle", get: (s) => s.a11y.healthBars, set: (s, v) => (s.a11y.healthBars = v as boolean) },
   { tab: "a11y", section: "Text & subtitles", label: "Text size", type: "slider", min: 0.8, max: 1.6, step: 0.05, format: x, get: (s) => s.a11y.textScale, set: (s, v) => (s.a11y.textScale = v as number) },
   { tab: "a11y", label: "Subtitles", type: "toggle", get: (s) => s.a11y.subtitles, set: (s, v) => (s.a11y.subtitles = v as boolean) },
   { tab: "a11y", label: "Subtitle size", type: "select", options: [{ value: "small", label: "Small" }, { value: "medium", label: "Medium" }, { value: "large", label: "Large" }, { value: "xl", label: "Extra large" }], get: (s) => s.a11y.subtitleSize, set: (s, v) => (s.a11y.subtitleSize = v as Settings["a11y"]["subtitleSize"]) },
@@ -78,6 +79,7 @@ export const OPTIONS: Option[] = [
   { tab: "controls", label: "Gyro aiming", desc: "Tilt your phone to fine-tune aim while aiming.", type: "toggle", get: (s) => s.controls.gyroAim, set: (s, v) => (s.controls.gyroAim = v as boolean) },
   { tab: "controls", section: "Hold or toggle", label: "Toggle aim", type: "toggle", get: (s) => s.controls.toggleAim, set: (s, v) => (s.controls.toggleAim = v as boolean) },
   { tab: "controls", label: "Toggle sprint", type: "toggle", get: (s) => s.controls.toggleSprint, set: (s, v) => (s.controls.toggleSprint = v as boolean) },
+  { tab: "controls", label: "Toggle crouch", type: "toggle", get: (s) => s.controls.toggleCrouch, set: (s, v) => (s.controls.toggleCrouch = v as boolean) },
   { tab: "controls", label: "Vibration", type: "toggle", get: (s) => s.controls.vibration, set: (s, v) => (s.controls.vibration = v as boolean) },
   { tab: "controls", section: "Touch screen", label: "Touch layout", type: "select", options: [{ value: "standard", label: "Two thumbs" }, { value: "oneHandedRight", label: "One hand (right)" }, { value: "oneHandedLeft", label: "One hand (left)" }], get: (s) => s.controls.touchLayout, set: (s, v) => (s.controls.touchLayout = v as Settings["controls"]["touchLayout"]) },
   { tab: "controls", label: "Button size", type: "slider", min: 0.7, max: 1.6, step: 0.05, format: x, get: (s) => s.controls.touchScale, set: (s, v) => (s.controls.touchScale = v as number) },
