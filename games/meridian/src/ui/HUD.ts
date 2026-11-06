@@ -68,6 +68,8 @@ export class HUD {
     this.el.classList.toggle("hidden", !on);
   }
 
+  private lastBoundaryToast = -Infinity;
+
   /** A short notice in the toast area (also used outside sim events, e.g. a new controller). */
   notice(title: string, body = ""): void {
     this.toast(title, body);
@@ -129,6 +131,13 @@ export class HUD {
         break;
       case "pickup":
         this.toast(ev.label);
+        break;
+      case "boundary":
+        // Once every few seconds at most, so walking along the edge doesn't flood the screen.
+        if (ev.near && performance.now() - this.lastBoundaryToast > 8000) {
+          this.lastBoundaryToast = performance.now();
+          this.toast("The map ends here", " Turn back to keep exploring.");
+        }
         break;
       case "treasure":
         this.toast(`Treasure: ${ev.name}`, ` ${ev.description}`);

@@ -21,7 +21,8 @@ import {
   yawDir,
   yawOf,
 } from "./math";
-import { World, inside, overlaps, rayAabb } from "./world/World";
+import { type RuntimeBox, World, inside, overlaps, rayAabb } from "./world/World";
+import { slideMove } from "./world/collide";
 import { PlayerController, type PlayerEvent } from "./player/PlayerController";
 import { type CameraState, newCamera, updateCamera } from "./player/CameraRig";
 import {
@@ -156,6 +157,7 @@ export type SimEvent =
   | { type: "playerDied" }
   | { type: "explosion"; pos: V3 }
   | { type: "pickup"; label: string }
+  | { type: "boundary"; near: boolean }
   | { type: "treasure"; id: string; name: string; description: string }
   | { type: "checkpoint"; id: string; label: string }
   /** One caption. `say` is the whole line to speak aloud (set on its first caption only). */
@@ -837,6 +839,7 @@ export class GameSim {
     this.updateEnemies(dt);
     this.updatePursuers(dt);
     this.updateHazards(dt);
+    this.updateBoundary();
     this.updateSearchlights(dt);
     this.updateWorldTriggers();
     this.updatePuzzles(dt);
@@ -945,7 +948,27 @@ export class GameSim {
   }
 
   makeNoise(noise: Noise): void {
-    for (const e of this.enemies) e.hear(noise);
+    const src = add(noise.pos, { x: 0, y: 0.5, z: 0 });
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      // Walls muffle sound: through solid stone a noise carries less than half as far.
+      const blocked = dist(e.pos, noise.pos) <= noise.radius && !this.world.lineOfSight(src, e.eye);
+      e.hear(blocked ? { ...noise, radius: noise.radius * TUNING.wallMuffle } : noise);
+    }
+  }
+
+  /** True when the player is tucked into cover and the cover sits between her and `from`. */
+  coverProtects(from: V3): boolean {
+    const p = this.player;
+    const c = p.cover;
+    if (p.mode !== "cover" || !c) return false;
+    if ((c.box as RuntimeBox).removed) return false;
+    const tucked = c.low ? p.crouched : Math.abs(c.peekOffset) < 0.3;
+    if (!tucked) return false;
+    const d = sub(from, p.pos);
+    const l = Math.hypot(d.x, d.z) || 1;
+    // The cover's normal points from the box toward the player; the shooter must be on the far side.
+    return (c.normal.x * d.x + c.normal.z * d.z) / l < -0.2;
   }
 
   // ---------------------------------------------------------------- shooting
@@ -1033,7 +1056,8 @@ export class GameSim {
           this.onEnemyKilled(res.enemy, res.headshot);
         }
       } else if (res.box) {
-        if (this.world.damageBox(res.box, def.damage)) this.onBoxDestroyed(res.box);
+        const k = TUNING.coverDamage[res.box.material] ?? 0.6;
+        if (this.world.damageBox(res.box, def.damage * k)) this.onBoxDestroyed(res.box);
       }
     }
     if (anyHit) {
@@ -1605,8 +1629,27 @@ export class GameSim {
       sightScale: this.weather?.sightScale ?? 1,
       shoot: (e, hit, damage, target) => {
         const from = add(e.pos, { x: 0, y: e.crouching ? 1.0 : e.def.height - 0.35, z: 0 });
+        // Tucked in behind cover on the side facing the shooter: most bullets hit the cover instead.
+        if (hit && this.coverProtects(from)) {
+          const pc = this.player.cover!;
+          const box = pc.box as RuntimeBox;
+          if (this.rand() >= (pc.low ? TUNING.cover.protectLow : TUNING.cover.protectHigh)) {
+            hit = false;
+            const k = TUNING.coverDamage[box.material] ?? 0.6;
+            if (this.world.damageBox(box, damage * 0.5 * k)) this.onBoxDestroyed(box);
+          }
+        }
         const miss = add(target, { x: (this.rand() - 0.5) * 1.6, y: (this.rand() - 0.3) * 1.2, z: (this.rand() - 0.5) * 1.6 });
-        const to = hit ? target : miss;
+        let to = hit ? target : miss;
+        if (!hit) {
+          // A miss stops at the first wall in its way instead of flying through it.
+          const d = sub(miss, from);
+          const l = Math.hypot(d.x, d.y, d.z);
+          if (l > 1e-3) {
+            const wall = this.world.raycast(from, scale(d, 1 / l), l, { ignoreCrates: false });
+            if (wall) to = wall.point;
+          }
+        }
         this.emit({ type: "shot", from, to, byPlayer: false, weapon: e.weapon ?? "pistol", hit });
         this.emit({ type: "sound", kind: "gunshot", pos: from });
         if (hit) this.hurtPlayer(damage, from);
@@ -1649,7 +1692,53 @@ export class GameSim {
       dt,
       this.enemies.map((e) => ({ id: e.id, arena: e.spawn.arena, alive: e.alive, distanceToPlayer: dist(e.pos, p.pos), wantsToShoot: e.wantsToShoot, lastShotAgo: e.lastShotAgo })),
     );
+    this.separateBodies();
   }
+
+  /** The hero and enemies are solid to each other: nobody walks through anybody. */
+  private separateBodies(): void {
+    const p = this.player;
+    if (!["ground", "air", "cover", "crate"].includes(p.mode)) return;
+    const minGap = TUNING.player.radius + 0.3;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      if (Math.abs(e.pos.y - p.pos.y) > 1.5) continue;
+      const dx = p.pos.x - e.pos.x;
+      const dz = p.pos.z - e.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d >= minGap) continue;
+      const push = minGap - d;
+      const nx = d > 1e-4 ? dx / d : Math.sin(p.yaw + Math.PI);
+      const nz = d > 1e-4 ? dz / d : Math.cos(p.yaw + Math.PI);
+      // The hero gives way most of the distance; enemies are heavier.
+      const to = { x: p.pos.x + nx * push * 0.7, y: p.pos.y, z: p.pos.z + nz * push * 0.7 };
+      p.pos = slideMove(this.world, p.pos, to, TUNING.player.radius, p.height - 0.05);
+      e.pos = slideMove(this.world, e.pos, { x: e.pos.x - nx * push * 0.3, y: e.pos.y, z: e.pos.z - nz * push * 0.3 }, 0.3, e.def.height);
+    }
+  }
+
+  /** Warn the player when she nears the invisible edge of the map. */
+  private updateBoundary(): void {
+    const p = this.player;
+    const warn = TUNING.boundaryWarn;
+    let near = false;
+    this.boundaries ??= this.world.boxes.filter((b) => b.boundary);
+    for (const b of this.boundaries) {
+      const dx = Math.max(b.min.x - p.pos.x, 0, p.pos.x - b.max.x);
+      const dz = Math.max(b.min.z - p.pos.z, 0, p.pos.z - b.max.z);
+      if (Math.hypot(dx, dz) < warn && p.pos.y < b.max.y && p.pos.y > b.min.y - 5) {
+        near = true;
+        break;
+      }
+    }
+    if (near && !this.nearBoundary) this.emit({ type: "boundary", near: true });
+    if (!near && this.nearBoundary) this.emit({ type: "boundary", near: false });
+    this.nearBoundary = near;
+  }
+
+  /** True while the hero is close to the edge of the map. */
+  nearBoundary = false;
+  private boundaries: RuntimeBox[] | null = null;
 
   // ---------------------------------------------------------------- bells
 

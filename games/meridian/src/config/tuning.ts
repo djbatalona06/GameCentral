@@ -98,7 +98,19 @@ export const TUNING = {
     lowHeight: 1.2,
     peekTime: 0.12,
     blindFireSpreadScale: 3.5,
+    /** Chance an enemy bullet still finds you while tucked in cover on the side facing them. */
+    protectLow: 0.35,
+    protectHigh: 0.2,
   },
+
+  /** How much of a bullet's damage breakable cover takes, by material (wood splinters, stone barely chips). */
+  coverDamage: { wood: 1, plaster: 0.8, foliage: 1, sand: 0.5, metal: 0.4, stone: 0.25, rock: 0.2, ground: 0.2, snow: 0.6 } as Record<string, number>,
+
+  /** Sound through a wall: radius multiplier when a solid blocks the straight path. */
+  wallMuffle: 0.4,
+
+  /** Map edge: how far inside the boundary the "turn back" warning starts. */
+  boundaryWarn: 6,
 
   health: {
     max: 100,

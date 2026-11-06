@@ -24,6 +24,11 @@ export interface BoxDef {
   explosive?: boolean;
   /** Player may wall-jump off this box's sides. */
   wallJump?: boolean;
+  /**
+   * The invisible edge of the map. It stops the player and enemies, but bullets, the camera,
+   * grenades and sight pass through it, and nothing is drawn: the land looks like it goes on.
+   */
+  boundary?: boolean;
 }
 
 export interface RampDef {

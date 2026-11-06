@@ -34,6 +34,7 @@ import { Matrix, Quaternion, Vector3, Vector4 } from "@babylonjs/core/Maths/math
 
 import type { GameSim, SimEvent } from "../sim/GameSim";
 import { angleDiff, lookDir, type V3 } from "../sim/math";
+import { coverMesh } from "./CoverKit";
 import { fovForAspect } from "../sim/player/CameraRig";
 import type { BoxDef, Material as MatName } from "../sim/world/types";
 import type { RuntimeBox } from "../sim/world/World";
@@ -369,7 +370,25 @@ export class SceneRenderer {
     for (const mv of data.movers) this.moverGroups.add(mv.group);
     const isDynamic = (b: BoxDef) => !!b.group || b.hp !== undefined || b.explosive || b.hidden;
 
+    const hc = this.settings().a11y.highContrast;
+    const coverKits: Mesh[] = [];
     for (const b of sim.world.boxes) {
+      // The map edge is invisible: the terrain and sky carry on past it.
+      if (b.boundary) continue;
+      // Cover gets its own look (sandbags, planks, stone, metal). High contrast keeps plain boxes.
+      if (b.cover && !b.explosive && !hc) {
+        const kit = coverMesh(scene, b);
+        kit.receiveShadows = true;
+        this.shadows?.addShadowCaster(kit);
+        if (isDynamic(b)) {
+          this.dynamicBoxes.set(b.id, kit);
+          kit.setEnabled(!b.removed);
+        } else {
+          kit.freezeWorldMatrix();
+          coverKits.push(kit);
+        }
+        continue;
+      }
       const mesh = this.boxMesh(b, b.id);
       if (b.explosive) {
         mesh.material = flatMaterial(scene, `barrel-${b.id}`, "#b8322a", { emissive: 0.08, specular: 0.3 });
@@ -404,6 +423,17 @@ export class SceneRenderer {
       const merged = Mesh.MergeMeshes(meshes, true, true, undefined, false, false);
       if (merged) {
         merged.name = `static-${mat}`;
+        merged.receiveShadows = true;
+        merged.freezeWorldMatrix();
+        merged.isPickable = false;
+        this.shadows?.addShadowCaster(merged);
+      }
+    }
+
+    if (coverKits.length > 1) {
+      const merged = Mesh.MergeMeshes(coverKits, true, true, undefined, false, false);
+      if (merged) {
+        merged.name = "static-cover";
         merged.receiveShadows = true;
         merged.freezeWorldMatrix();
         merged.isPickable = false;

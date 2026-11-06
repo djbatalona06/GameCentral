@@ -9,6 +9,7 @@
 // with a laser, grenadiers flush campers out of cover.
 
 import { TUNING } from "../../config/tuning";
+import { slideMove } from "../world/collide";
 import { type V3, add, angleDiff, clamp01, dist, distXZ, dot, lerp, norm, scale, sub, yawOf } from "../math";
 import { WEAPONS, type WeaponId } from "../combat/weapons";
 import { ARCHETYPES, type Archetype, type ArchetypeId } from "./archetypes";
@@ -300,6 +301,8 @@ export class Enemy {
     if (!this.pathGoal || dist(this.pathGoal, goal) > 1 || this.repathTimer <= 0 || this.path.length === 0) {
       this.pathGoal = { ...goal };
       this.repathTimer = 1.0;
+      // With no route on the nav grid, head straight for the goal; slideMove below still stops
+      // the enemy at walls, so nobody walks through solid stone any more.
       this.path = nav?.findPath(this.pos, goal) ?? [goal];
     }
     if (this.path.length === 0) return true;
@@ -323,10 +326,13 @@ export class Enemy {
         next.z += ((next.z - o.pos.z) / s) * (0.7 - s) * 0.5;
       }
     }
-    const g = ctx.world.groundHeight(next.x, next.z, this.pos.y + 0.7, 0.3);
+    // Walls stop enemies just like the player (slide along them, never pass through).
+    const moved = slideMove(ctx.world, this.pos, next, 0.3, this.def.height);
+    const g = ctx.world.groundHeight(moved.x, moved.z, this.pos.y + 0.7, 0.3);
     if (Number.isFinite(g.y) && Math.abs(g.y - this.pos.y) < 1.2) {
-      next.y = g.y;
-      this.pos = next;
+      moved.y = g.y;
+      if (distXZ(moved, this.pos) < step * 0.1) this.path = []; // stuck against a wall: re-plan
+      this.pos = moved;
     } else {
       this.path = [];
     }
