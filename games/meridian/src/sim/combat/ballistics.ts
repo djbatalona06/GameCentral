@@ -1,7 +1,7 @@
-// Grenade arcs, health regeneration and aim assist: pure functions shared by player and enemies.
+// Grenade arcs and health regeneration: pure functions shared by player and enemies.
 
 import { TUNING } from "../../config/tuning";
-import { type V3, angleDiff, lookDir, sub, len, yawOf } from "../math";
+import { type V3, lookDir, sub, len } from "../math";
 import type { World } from "../world/World";
 
 export interface ArcPoint {
@@ -74,50 +74,6 @@ export function applyDamage(h: HealthState, amount: number): boolean {
   return h.hp <= 0;
 }
 
-export type AimAssistLevel = "off" | "low" | "high";
-
-export interface AssistTarget {
-  pos: V3;
-}
-
-export interface AssistResult {
-  /** Multiplier on look sensitivity (slow-down near targets). */
-  sensitivity: number;
-  /** Rotation to apply when aim starts (snap-to-target). */
-  snapYaw: number;
-  snapPitch: number;
-  /** Bullet-magnetism correction for the next shot. */
-  magnetYaw: number;
-  magnetPitch: number;
-}
-
-/** Finds the target closest to the reticle and computes slowdown, snap and magnetism. */
-export function aimAssist(level: AimAssistLevel, eye: V3, yaw: number, pitch: number, targets: AssistTarget[]): AssistResult {
-  const none: AssistResult = { sensitivity: 1, snapYaw: 0, snapPitch: 0, magnetYaw: 0, magnetPitch: 0 };
-  if (level === "off" || targets.length === 0) return none;
-  const cfg = TUNING.aimAssist[level];
-  let best: { dy: number; dp: number; ang: number } | null = null;
-  for (const t of targets) {
-    const d = sub(t.pos, eye);
-    const dist = len(d);
-    if (dist < 0.5 || dist > 60) continue;
-    const ty = yawOf(d);
-    const tp = Math.asin(d.y / dist);
-    const dy = angleDiff(yaw, ty);
-    const dp = tp - pitch;
-    const ang = Math.hypot(dy, dp);
-    if (!best || ang < best.ang) best = { dy, dp, ang };
-  }
-  if (!best) return none;
-  const res = { ...none };
-  if (best.ang < cfg.slowdownAngle) res.sensitivity = cfg.slowdownFactor;
-  if (best.ang < cfg.snapAngle) {
-    res.snapYaw = best.dy;
-    res.snapPitch = best.dp;
-  }
-  if (best.ang < cfg.magnetAngle) {
-    res.magnetYaw = best.dy;
-    res.magnetPitch = best.dp;
-  }
-  return res;
-}
+// Aim assist moved to its own module (it grew tracking and eased snapping). Re-exported here so
+// older imports keep working.
+export { type AimAssistLevel, type AssistTarget, type AssistResult, aimAssist } from "./aimAssist";

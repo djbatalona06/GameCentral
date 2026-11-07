@@ -31,6 +31,8 @@ sim/        GameSim: pure TypeScript, fixed 60 Hz, deterministic seed, no Babylo
 ```
 Key rule: **the simulation never knows how it is drawn.** That is what makes every jump, fight and puzzle unit-testable.
 
+Input feel (zoom-matched aiming, aim assist, motion-sensor aiming, stick shaping, touch extras) is described with its formulas in [input-feel.md](input-feel.md).
+
 ## Simulation details
 - Fixed timestep of 1/60 s, at most 4 steps per rendered frame (to avoid a "spiral of death" on slow devices).
 - Geometry is axis-aligned boxes (greybox). Collision is moved one axis at a time, with step-up and ground snapping.

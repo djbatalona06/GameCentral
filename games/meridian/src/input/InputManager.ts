@@ -29,6 +29,8 @@ export class InputManager {
   device: InputFrame["device"] = isComputer() ? "keyboard" : "touch";
   /** When false (menus open), gameplay input is ignored. */
   enabled = true;
+  /** Motion-sensor turn since the last poll (radians), filled by GyroInput. */
+  readonly gyro = { yaw: 0, pitch: 0 };
 
   private prevHeld = new Set<ButtonAction>();
   private toggled = new Set<ButtonAction>();
@@ -80,6 +82,8 @@ export class InputManager {
       // Remember what is held while menus are open, so a button still held when play resumes
       // (the Menu button that closed the pause screen, A on "Resume") never counts as a new press.
       this.prevHeld = rawHeld;
+      this.gyro.yaw = 0;
+      this.gyro.pitch = 0;
       return { move: { x: 0, y: 0 }, look: { yaw: 0, pitch: 0 }, buttons, device: this.device };
     }
 
@@ -118,13 +122,22 @@ export class InputManager {
     }
     this.prevHeld = new Set([...rawHeld]);
 
-    const aimScale = buttons.aim.held ? s.controls.aimSensitivity : 1;
+    // Gyro "while aiming" only turns the camera while Aim is held; "always" whenever playing.
+    const mode = s.controls.gyroMode ?? "off";
+    const useGyro = mode === "always" || (mode === "aiming" && buttons.aim.held);
+    const gyro = useGyro ? { yaw: this.gyro.yaw, pitch: this.gyro.pitch } : { yaw: 0, pitch: 0 };
+    this.gyro.yaw = 0;
+    this.gyro.pitch = 0;
+    // Zoom matching and aim sensitivity are applied by the simulation, which knows the current zoom.
     return {
       move: { x: mx, y: my },
-      look: { yaw: yaw * s.controls.lookSensitivity * aimScale, pitch: pitch * s.controls.lookSensitivity * (s.controls.lookYScale ?? 1) * aimScale },
+      look: { yaw: yaw * s.controls.lookSensitivity, pitch: pitch * s.controls.lookSensitivity * (s.controls.lookYScale ?? 1) },
       buttons,
       device: this.device,
       walk,
+      gyro,
+      aimSens: s.controls.aimSensitivity,
+      zoomMatch: s.controls.zoomMatch ?? 0,
     };
   }
 
@@ -146,6 +159,8 @@ export class InputManager {
       src.tapped.clear();
       src.look = { yaw: 0, pitch: 0 };
     }
+    this.gyro.yaw = 0;
+    this.gyro.pitch = 0;
     this.prevHeld = still;
   }
 }

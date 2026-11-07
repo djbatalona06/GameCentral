@@ -28,7 +28,7 @@ import { type CacheTier, cacheLoot, enemyLoot, TREASURE_SALVAGE } from "./loot/L
 import { type CraftId, PLATE_ARMOR, RECIPES, RESOURCE_NAMES, type Resource } from "./loot/items";
 import type { UpgradeTrack } from "./loot/upgrades";
 import { PlayerController, type PlayerEvent } from "./player/PlayerController";
-import { type CameraState, newCamera, updateCamera } from "./player/CameraRig";
+import { type CameraState, newCamera, updateCamera, zoomLookScale } from "./player/CameraRig";
 import {
   WEAPONS,
   type WeaponId,
@@ -45,6 +45,7 @@ import {
   tickWeapon,
 } from "./combat/weapons";
 import { type AimAssistLevel, type HealthState, aimAssist, applyDamage, simulateArc, throwVelocity, tickHealth, type ArcPoint } from "./combat/ballistics";
+import { AimAssistState, type AssistTarget } from "./combat/aimAssist";
 import { Enemy, type DifficultyMods, type EnemyContext } from "./ai/Enemy";
 import { NavGrid } from "./ai/NavGrid";
 import { SquadDirector } from "./ai/SquadDirector";
@@ -297,7 +298,7 @@ export class GameSim {
   private lastCheckpointIndex = -1;
   private arenaAlive = new Map<string, number>();
   private waveAlive = new Map<string, number>();
-  private wasAiming = false;
+  private assistState = new AimAssistState();
   currentLine: Line | null = null;
 
   /** What the story remembers; carried from chapter to chapter by the save file. */
@@ -822,17 +823,28 @@ export class GameSim {
     if (this.aiming && oneHanded && this.weapons.sidearm) this.weapons.active = "sidearm";
     if (this.aiming && p.sprinting) p.sprinting = false;
 
-    // Aim assist: slow-down while aiming near a target, snap when aiming starts.
-    const targets = this.enemies.filter((e) => e.alive && this.world.lineOfSight(this.cam.position, e.head().c)).map((e) => ({ pos: { ...e.head().c, y: e.head().c.y - 0.35 } }));
-    for (const pu of this.pursuers) if (pu.alive) targets.push({ pos: { ...pursuerHead(pu).c, y: pursuerHead(pu).c.y - 0.5 } });
-    const assist = aimAssist(this.aiming ? this.opts.aimAssist : "off", this.cam.pivot, this.cam.yaw, this.cam.pitch, targets);
-    let lookYaw = input.look.yaw * assist.sensitivity;
-    let lookPitch = input.look.pitch * assist.sensitivity;
-    if (this.aiming && !this.wasAiming) {
-      lookYaw += assist.snapYaw;
-      lookPitch += assist.snapPitch;
-    }
-    this.wasAiming = this.aiming;
+    // Aim assist: friction near a target, tracking while steering, an eased snap when aiming
+    // starts (High) and magnetism for near misses. Only enemies in plain sight count.
+    const targets: AssistTarget[] = this.enemies
+      .filter((e) => e.alive && this.world.lineOfSight(this.cam.position, e.head().c))
+      .map((e) => ({ id: e.id, pos: { ...e.head().c, y: e.head().c.y - 0.35 } }));
+    for (const pu of this.pursuers) if (pu.alive) targets.push({ id: pu.def.id, pos: { ...pursuerHead(pu).c, y: pursuerHead(pu).c.y - 0.5 }, radius: 0.9 });
+    const level = this.aiming ? this.opts.aimAssist : "off";
+    const assist = aimAssist(level, this.cam.pivot, this.cam.yaw, this.cam.pitch, targets, { device: input.device });
+
+    // Zoom matching: the narrower the view, the slower the turn, so the same hand movement moves
+    // the picture by the same amount at hip, shoulder aim and in a scope (see zoomLookScale).
+    const zoom = zoomLookScale(TUNING.camera.fov * this.opts.fovScale, this.cam.fov, input.zoomMatch ?? 0);
+    const scale = zoom * (this.aiming || this.throwAiming ? (input.aimSens ?? 1) : 1);
+    // Motion aiming is physical: tilting the phone up always looks up, so undo "invert Y" for it.
+    const gyroYaw = input.gyro?.yaw ?? 0;
+    const gyroPitch = (input.gyro?.pitch ?? 0) * (this.opts.invertY ? -1 : 1);
+    let lookYaw = (input.look.yaw * assist.sensitivity + gyroYaw) * scale;
+    let lookPitch = (input.look.pitch * assist.sensitivity + gyroPitch) * scale;
+    const steering = Math.abs(input.look.yaw) + Math.abs(input.look.pitch) + Math.abs(gyroYaw) + Math.abs(gyroPitch) > 1e-5 || Math.hypot(input.move.x, input.move.y) > 0.2;
+    const help = this.assistState.update(level, this.aiming, assist, { device: input.device, steering, dt });
+    lookYaw += help.yaw;
+    lookPitch += help.pitch;
     this.timeScale = this.aiming && this.opts.slowMoAim ? 0.55 : 1;
 
     // Navigation assist turns the camera toward the objective.

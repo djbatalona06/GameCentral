@@ -23,8 +23,10 @@ Each feature is mapped to the **Xbox Accessibility Guidelines (XAG 101–118)** 
 | Hold-to-toggle for aim and sprint; crouch is always a toggle | Controls | 107 | Intermediate |
 | Touch button size, opacity and position editor | Controls | 107 | Intermediate |
 | One-handed touch layouts (left and right) | Controls | 107 | Advanced |
-| Sensitivity (look and aim), invert Y, gyro aim | Controls | 107 | Basic |
-| Aim assist off/low/high (slowdown, snap, bullet magnetism) | Gameplay | 108 Game difficulty options | Intermediate |
+| Sensitivity (look and aim, zoom-matched), invert Y, motion aiming (off / while aiming / always) | Controls | 107 | Basic |
+| Aim assist off/low/high (smooth friction, tracking, eased snap, near-miss magnetism) | Gameplay | 108 Game difficulty options | Intermediate |
+| Look stick response curve, turn boost, flick stick | Controls | 107 | Intermediate |
+| Fixed or floating touch stick, swipe acceleration, Aim + Fire button | Controls | 107 | Intermediate |
 | Auto-fire on target | Gameplay | 107, 108 | Advanced |
 | Slow-motion aiming | Gameplay | 108 | Advanced |
 | Traversal assist (auto-balance, smart ledge jumps, auto rope swing) | Gameplay | 108 | Advanced |

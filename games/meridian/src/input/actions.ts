@@ -37,6 +37,16 @@ export interface InputFrame {
   device: "touch" | "gamepad" | "keyboard";
   /** True when walk mode halved `move` (vehicles undo that, so the jeep keeps full steering). */
   walk?: boolean;
+  /**
+   * Motion-sensor (gyro) turn for this tick, in radians. Kept apart from `look` so aim-assist
+   * friction and look sensitivity never touch it: 1 at gyro sensitivity means the camera turns
+   * exactly as far as the phone did.
+   */
+  gyro?: { yaw: number; pitch: number };
+  /** Player's aim-sensitivity multiplier, applied while aiming on top of zoom matching. */
+  aimSens?: number;
+  /** Zoom-matching point on screen (0 = crosshair). See zoomLookScale in CameraRig.ts. */
+  zoomMatch?: number;
 }
 
 export const emptyButtons = (): Record<ButtonAction, ButtonState> => {

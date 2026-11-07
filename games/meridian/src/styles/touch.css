@@ -34,6 +34,11 @@
   display: none;
 }
 .tc-stick.active { display: block; }
+/* Fixed stick: always shown at its spot, a little fainter until the thumb is on it. */
+.tc-stick.fixed { display: block; opacity: calc(var(--tc-opacity) * 0.9); }
+.tc-stick.fixed.active { opacity: 1; }
+.tc-btn.tc-hidden { display: none; }
+.tc-aimFire { border-color: rgba(255, 120, 100, 0.8); font-size: calc(10px * var(--text-scale)); }
 .tc-knob {
   position: absolute;
   left: 50%;
