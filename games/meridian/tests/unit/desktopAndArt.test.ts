@@ -75,7 +75,7 @@ describe("settings upgrade to v5", () => {
     v4.a11y.textScale = 1.4;
     const store = new SettingsStore(memoryStore({ settings: v4 }));
     const s = await store.load();
-    expect(s.version).toBe(5);
+    expect(s.version).toBe(6);
     expect(s.a11y.textScale).toBe(1.4);
     expect(s.controls.touchPositions).toEqual({ fire: { x: 4, y: 5 } });
     expect(s.controls.glyphs).toBe("auto");

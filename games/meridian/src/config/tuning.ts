@@ -154,9 +154,57 @@ export const TUNING = {
     throwBackRadius: 2.6,
   },
 
+  /**
+   * Aim assist (see sim/combat/aimAssist.ts and docs/input-feel.md). Angles are measured in "target
+   * sizes": a target's size is the angle its body covers from the camera, atan(targetRadius / distance),
+   * so a far-away enemy gets a small help zone and a close one a big zone. `minZone` keeps tiny
+   * far targets usable.
+   *  - friction: look speed is multiplied by 1 - frictionAlpha * exp(-frictionK * angle / zone).
+   *  - track: share of the target's sideways motion the reticle follows while the player steers.
+   *  - snap: when aim starts within snapZone, the camera eases onto the target over snapTime seconds.
+   *  - magnet: near misses (outside the body, within magnetZone) bend onto the target.
+   */
   aimAssist: {
-    low: { snapAngle: 0, slowdownAngle: 0.09, slowdownFactor: 0.65, magnetAngle: 0.025 },
-    high: { snapAngle: 0.22, slowdownAngle: 0.14, slowdownFactor: 0.45, magnetAngle: 0.05 },
+    targetRadius: 0.45,
+    maxRange: 60,
+    /** Targets further than this from the reticle (radians) are never considered. */
+    maxAngle: 0.6,
+    /** Scoring weights: angle from the reticle matters most, distance breaks ties. */
+    weightAngle: 1,
+    weightDistance: 0.35,
+    low: { zone: 3.2, minZone: 0.035, frictionAlpha: 0.4, frictionK: 1.6, track: 0.35, snapZone: 0, snapTime: 0.12, magnetZone: 1.6 },
+    high: { zone: 4.5, minZone: 0.05, frictionAlpha: 0.6, frictionK: 1.2, track: 0.6, snapZone: 5, snapTime: 0.12, magnetZone: 2.4 },
+  },
+
+  /** Controller look stick shaping (see input/LookShaping.ts). */
+  stick: {
+    /** Stick travel past this counts as fully pushed (many sticks never quite reach 1.0). */
+    outerDeadzone: 0.92,
+    /** Holding the stick fully over for boostDelay seconds speeds the turn up to boostMul over boostRamp seconds. */
+    boostDelay: 0.2,
+    boostRamp: 0.35,
+    boostMul: 1.6,
+    /** Flick stick: pushing past this starts a flick; the flick takes flickTime seconds. */
+    flickThreshold: 0.9,
+    flickTime: 0.1,
+  },
+
+  /** Phone motion-sensor aiming (see input/Gyro.ts). Rates in radians per second. */
+  gyro: {
+    /** Below this rate the phone counts as still, and the drift estimate is updated. */
+    stillRate: 0.035,
+    /** How long the phone must be still before calibration starts trusting it (seconds). */
+    calibrateAfter: 0.6,
+    /** Rotation slower than this is scaled down smoothly, which hides hand tremor. */
+    tightenRate: 0.04,
+    /** Ignore single readings faster than this (sensor glitches). */
+    maxRate: 25,
+  },
+
+  /** Touch swipe-to-look. */
+  touchLook: {
+    /** Finger speed (px per ms) at which swipe acceleration reaches its full effect. */
+    accelSpeed: 1.5,
   },
 
   ai: {

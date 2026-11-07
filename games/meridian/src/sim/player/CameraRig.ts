@@ -69,6 +69,26 @@ export function fovForAspect(vfov: number, aspect: number, refAspect = REFERENCE
   return Math.min(Math.max(vfov, keepH), Math.max(vfov, MAX_VERTICAL_FOV));
 }
 
+/**
+ * How much slower the camera should turn when the view is zoomed in, so the same hand movement
+ * moves things on screen by the same amount at every zoom ("focal length" or monitor-distance
+ * matching). A flat multiplier gets this wrong: it feels fine at shoulder aim but far too fast in
+ * a scope.
+ *
+ * `hipFov` and `curFov` are vertical fields of view in radians. `coeff` picks the spot on screen
+ * where speeds match, as a share of half the screen's height: 0 = the crosshair (precise
+ * tracking), 1.33 = the edge of a 4:3 picture, 1.78 = the side edge of a 16:9 screen.
+ *   coeff 0:  tan(cur/2) / tan(hip/2)
+ *   coeff c:  atan(c·tan(cur/2)) / atan(c·tan(hip/2))
+ */
+export function zoomLookScale(hipFov: number, curFov: number, coeff = 0): number {
+  if (!(curFov > 0) || !(hipFov > 0) || curFov >= hipFov) return 1;
+  const tc = Math.tan(curFov / 2);
+  const th = Math.tan(hipFov / 2);
+  if (coeff <= 1e-6) return tc / th;
+  return Math.atan(coeff * tc) / Math.atan(coeff * th);
+}
+
 export function updateCamera(cam: CameraState, inp: CameraInput, world: World, dt: number): void {
   const c = TUNING.camera;
   const looking = Math.abs(inp.lookYaw) + Math.abs(inp.lookPitch) > 1e-5;

@@ -4,14 +4,9 @@ import { TUNING } from "../config/tuning";
 import type { Settings } from "../core/Settings";
 import type { ButtonAction } from "./actions";
 import type { InputSource } from "./InputManager";
+import { FlickStick, LookBoost, deadzone, shapeStick } from "./LookShaping";
 
-/** Radial deadzone: inside it the stick reads zero, outside it the range is stretched back to 0..1. */
-export const deadzone = (x: number, y: number, dz: number): [number, number] => {
-  const m = Math.hypot(x, y);
-  if (m < dz || m === 0) return [0, 0];
-  const scaled = Math.min(1, (m - dz) / (1 - dz));
-  return [(x / m) * scaled, (y / m) * scaled];
-};
+export { deadzone };
 
 export class GamepadInput {
   private prevPressed = new Set<number>();
@@ -22,6 +17,8 @@ export class GamepadInput {
   /** Raw button edges for menu navigation (index -> pressed this frame). */
   menuPressed = new Set<number>();
   menuAxis = { x: 0, y: 0 };
+  private boost = new LookBoost();
+  private flick = new FlickStick();
 
   constructor(private src: InputSource, private settings: () => Settings) {
     window.addEventListener("gamepadconnected", () => (this.connected = true));
@@ -47,6 +44,8 @@ export class GamepadInput {
       }
       this.prevPressed.clear();
       this.menuAxis = { x: 0, y: 0 };
+      this.boost.reset();
+      this.flick.reset();
       return;
     }
     this.connected = true;
@@ -70,15 +69,27 @@ export class GamepadInput {
         }
       }
     }
-    const dz = Math.max(0.02, Math.min(0.4, this.settings().controls.stickDeadzone));
-    const [mx, my] = deadzone(p.axes[0] ?? 0, p.axes[1] ?? 0, dz);
-    const [lx, ly] = deadzone(p.axes[2] ?? 0, p.axes[3] ?? 0, dz);
+    const c = this.settings().controls;
+    const dz = Math.max(0.02, Math.min(0.4, c.stickDeadzone));
+    const outer = TUNING.stick.outerDeadzone;
+    const [mx, my] = deadzone(p.axes[0] ?? 0, p.axes[1] ?? 0, dz, outer);
+    const [lx, ly] = deadzone(p.axes[2] ?? 0, p.axes[3] ?? 0, dz, outer);
     this.src.move = { x: mx, y: -my };
     this.menuAxis = { x: mx, y: my };
-    // Response curve: fine control near the centre, fast turns at full tilt.
-    const curve = (v: number) => Math.sign(v) * v * v;
-    this.src.look.yaw += curve(lx) * TUNING.camera.lookSensitivity * dt;
-    this.src.look.pitch -= curve(ly) * TUNING.camera.lookSensitivity * 0.7 * dt;
+    if (c.flickStick) {
+      // Flick stick: the stick points the camera; up and down come from the motion sensor.
+      // Flicks are physical turns, so look sensitivity does not scale them (undo it here).
+      this.src.look.yaw += this.flick.update(lx, -ly, dt) / Math.max(0.05, c.lookSensitivity);
+      this.boost.reset();
+    } else {
+      this.flick.reset();
+      // Response curve: fine control near the centre, fast turns at full tilt, plus the turn boost
+      // after holding the stick all the way over for a moment.
+      const [cx, cy] = shapeStick(lx, ly, c.stickCurve ?? "dynamic");
+      const boost = c.lookBoost === false ? 1 : this.boost.update(Math.hypot(cx, cy), dt);
+      this.src.look.yaw += cx * boost * TUNING.camera.lookSensitivity * dt;
+      this.src.look.pitch -= cy * TUNING.camera.lookSensitivity * 0.7 * dt;
+    }
     if (pressedNow.size || mx || my || lx || ly) this.src.active = true;
     this.prevPressed = pressedNow;
   }

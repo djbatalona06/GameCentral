@@ -10,6 +10,7 @@ import { AUTOSAVE_SLOT, SLOT_COUNT, newSave, type SaveFile } from "../save/schem
 import { InputManager } from "../input/InputManager";
 import { KeyboardMouse } from "../input/KeyboardMouse";
 import { GamepadInput } from "../input/GamepadInput";
+import { GyroInput } from "../input/Gyro";
 import { TouchControls } from "../input/TouchControls";
 import type { ButtonAction, InputFrame } from "../input/actions";
 import { WEAPONS, type WeaponId, defOf } from "../sim/combat/weapons";
@@ -77,7 +78,6 @@ export class Game {
   private settingsSaveTimer = 0;
   private debug = false;
   private deathTimer = 0;
-  private gyro = { beta: 0, gamma: 0, active: false };
   /** Desktop (keyboard + mouse) or touch. Starts from the device type and follows what the player actually uses. */
   private inputMode: "touch" | "desktop" = "desktop";
   /** Seconds left of the short game freeze after a knockout. */
@@ -123,6 +123,8 @@ export class Game {
     this.input = new InputManager(s);
     this.keyboard = new KeyboardMouse(this.input.keyboard, canvas, s);
     this.gamepad = new GamepadInput(this.input.gamepad, s);
+    // Motion-sensor aiming feeds its own channel; it listens for the whole session.
+    new GyroInput(this.input.gyro, s);
     this.gamepad.onNonStandard = () => this.hud.notice("Controller connected", "Its buttons use an unusual layout. You can remap them in Settings, Controls.");
     this.touch = new TouchControls(this.input.touch, s, document.getElementById("touch-root")!);
     this.touch.show(false);
@@ -182,12 +184,8 @@ export class Game {
   private settingsChanged(): void {
     this.applySettings();
     this.settingsSaveTimer = 0.4;
-    if (this.settings.controls.gyroAim) this.requestGyro();
-  }
-
-  private requestGyro(): void {
-    const D = DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> };
-    if (D.requestPermission) D.requestPermission().catch(() => undefined);
+    // iPhone asks before sharing motion data; changing the setting is a tap, so ask now.
+    if (this.settings.controls.gyroMode !== "off") GyroInput.requestPermission();
   }
 
   // ------------------------------------------------------------------ global events
@@ -253,19 +251,6 @@ export class Game {
     });
     window.addEventListener("mousedown", (e) => {
       if (this.listening?.device === "keys") this.finishRebind(`Mouse${e.button}`);
-    });
-    window.addEventListener("deviceorientation", (e) => {
-      if (e.beta === null || e.gamma === null) return;
-      if (this.gyro.active && this.settings.controls.gyroAim && this.sim?.aiming) {
-        // The game is played in landscape, where the phone's beta tilt is the turn and gamma is up/down.
-        const dYaw = (e.beta - this.gyro.beta) * (Math.PI / 180);
-        const dPitch = (e.gamma - this.gyro.gamma) * (Math.PI / 180);
-        if (Math.abs(dYaw) < 0.3 && Math.abs(dPitch) < 0.3) {
-          this.input.touch.look.yaw -= dYaw * 0.8;
-          this.input.touch.look.pitch += dPitch * 0.8;
-        }
-      }
-      this.gyro = { beta: e.beta, gamma: e.gamma, active: true };
     });
   }
 

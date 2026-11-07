@@ -13,9 +13,12 @@ export type Quality = "auto" | "low" | "medium" | "high" | "ultra";
 export type TouchPositions = Record<string, { x: number; y: number }>;
 export type MotionBlur = "off" | "low" | "high";
 export type FpsCap = 30 | 60 | 90 | 120 | 144;
+export type GyroMode = "off" | "aiming" | "always";
+export type StickCurve = "linear" | "dynamic" | "precise";
+export type TouchStick = "floating" | "fixed";
 
 export interface Settings {
-  version: 5;
+  version: 6;
   firstRunDone: boolean;
   /** Set once the player has opened Quick setup, which hides the "New here?" hint on the main menu. */
   quickSetupSeen: boolean;
@@ -29,14 +32,35 @@ export interface Settings {
     lookSensitivity: number;
     /** Vertical look speed as a share of the horizontal speed. */
     lookYScale: number;
+    /** Extra speed while aiming, on top of zoom matching (1 = matched exactly). */
     aimSensitivity: number;
+    /**
+     * Where on screen aiming speed is matched between zoom levels, as a share of half the screen
+     * height: 0 = the crosshair (precise), 1.33 = 4:3 edge, 1.78 = 16:9 edge.
+     */
+    zoomMatch: number;
     /** How far a stick must move before it counts (0..0.4). */
     stickDeadzone: number;
     /** Button names shown in prompts: picked from the connected controller, or chosen. */
     glyphs: GlyphChoice;
     /** Mouse movement straight from the mouse, without the system's pointer acceleration. */
     rawMouse: boolean;
-    gyroAim: boolean;
+    /** Phone motion-sensor aiming: off, only while aiming, or always. */
+    gyroMode: GyroMode;
+    /** 1 = turning the phone 10 degrees turns the camera 10 degrees. */
+    gyroSensitivity: number;
+    /** Controller look-stick response: linear, dynamic (squared) or precise (cubed). */
+    stickCurve: StickCurve;
+    /** Turn faster after holding the look stick all the way over for a moment. */
+    lookBoost: boolean;
+    /** Controller: the right stick points the camera where you push it (pair with gyro "always"). */
+    flickStick: boolean;
+    /** Touch movement stick: appears where your thumb lands, or stays in one place. */
+    touchStick: TouchStick;
+    /** Quick swipes turn further than slow ones (0 = off). */
+    touchLookAccel: number;
+    /** An extra touch button that aims and fires together. */
+    touchAimFire: boolean;
     vibration: boolean;
     touchLayout: TouchLayout;
     touchScale: number;
@@ -95,7 +119,7 @@ export interface Settings {
 }
 
 export const defaultSettings = (): Settings => ({
-  version: 5,
+  version: 6,
   firstRunDone: false,
   quickSetupSeen: false,
   gameplay: defaultGameplay(),
@@ -107,11 +131,19 @@ export const defaultSettings = (): Settings => ({
     toggleCrouch: true,
     lookSensitivity: 1,
     lookYScale: 1,
-    aimSensitivity: 0.7,
+    aimSensitivity: 1,
+    zoomMatch: 0,
     stickDeadzone: 0.18,
     glyphs: "auto",
     rawMouse: true,
-    gyroAim: false,
+    gyroMode: "off",
+    gyroSensitivity: 1,
+    stickCurve: "dynamic",
+    lookBoost: true,
+    flickStick: false,
+    touchStick: "floating",
+    touchLookAccel: 0.3,
+    touchAimFire: false,
     vibration: true,
     touchLayout: "standard",
     touchScale: 1,
@@ -202,7 +234,7 @@ function mergeDefaults<T>(base: T, saved: unknown): T {
   return out as T;
 }
 
-/** Upgrades settings saved by older versions (v1 had one set of touch positions; v2 to v3 added per-orientation ones, v4 went back to one, v5 added desktop and controller options). */
+/** Upgrades settings saved by older versions (v1 had one set of touch positions; v2 to v3 added per-orientation ones, v4 went back to one, v5 added desktop and controller options, v6 zoom-matched aiming and gyro modes). */
 export function migrateSettings(saved: unknown): unknown {
   const s = structuredClone(saved) as { version?: number; controls?: { touchPositions?: Record<string, unknown> } };
   if ((s.version ?? 1) < 2) {
@@ -233,6 +265,20 @@ export function migrateSettings(saved: unknown): unknown {
     // v5 added motion blur, render scale, controller button names, stick deadzone, vertical look
     // speed, raw mouse and the motion-effects switch. Their defaults are filled in by mergeDefaults.
     s.version = 5;
+  }
+  if ((s.version ?? 1) < 6) {
+    // v6: aim speed is matched to the zoom automatically, so "aim sensitivity" is now relative to
+    // that (1 = matched). The old default 0.7 felt like 1 does now, so old values are rescaled.
+    // The gyro switch became a mode (off / while aiming / always).
+    const c = s.controls as Record<string, unknown> | undefined;
+    if (c) {
+      if (typeof c.aimSensitivity === "number") c.aimSensitivity = Math.round(Math.min(2, Math.max(0.2, c.aimSensitivity / 0.7)) * 100) / 100;
+      if ("gyroAim" in c) {
+        c.gyroMode = c.gyroAim ? "aiming" : "off";
+        delete c.gyroAim;
+      }
+    }
+    s.version = 6;
   }
   return s;
 }

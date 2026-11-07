@@ -1,7 +1,8 @@
-// On-screen touch controls. Left thumb: a floating stick, a Walk/Run switch, and two cards that show
-// the selected gun (tap to swap) and the current goal (tap to point at it). Right thumb: the action
-// buttons, and swipe-to-look. Everything can be resized, faded and moved (layout editor), and there
-// are one-handed layouts for players who play with one thumb.
+// On-screen touch controls. Left thumb: a movement stick (floating, or fixed in one place), a
+// Walk/Run switch, and two cards that show the selected gun (tap to swap) and the current goal (tap
+// to point at it). Right thumb: the action buttons, an optional Aim + Fire button, and swipe-to-look
+// (quick swipes turn further than slow ones). Everything can be resized, faded and moved (layout
+// editor), and there are one-handed layouts for players who play with one thumb.
 
 import { TUNING } from "../config/tuning";
 import type { Settings, TouchLayout } from "../core/Settings";
@@ -45,6 +46,9 @@ export const BUTTONS: ButtonDef[] = [
   { id: "throw", action: "throw", label: "Throw", size: 52, looks: true },
   { id: "crouch", action: "crouch", label: "Crouch", size: 52 },
   { id: "pause", action: "pause", label: "II", size: 46 },
+  // Optional (Settings, Touch screen): aims on touch and fires a moment later; dragging it looks.
+  // It sits inward from the screen edge so the thumb still has room to swipe outward.
+  { id: "aimFire", action: "aim", label: "Aim+Fire", size: 70, looks: true },
   // Left side: status widgets. The cards replace the old Swap and Goal buttons.
   { id: "walk", action: null, label: "Run", size: 52 },
   { id: "gun", action: "swapWeapon", label: "", size: 52, w: 150, h: 52 },
@@ -82,6 +86,7 @@ const LAYOUTS: Record<TouchLayout, Record<string, { x: number; y: number }>> = {
     throw: { x: 78, y: 46 },
     crouch: { x: 54, y: 88 },
     pause: { x: 95, y: 8 },
+    aimFire: { x: 56, y: 64 },
     goal: { x: 14, y: 12 },
     gun: { x: 14, y: 33 },
     walk: { x: 8, y: 53 },
@@ -97,6 +102,7 @@ const LAYOUTS: Record<TouchLayout, Record<string, { x: number; y: number }>> = {
     throw: { x: 72, y: 30 },
     crouch: { x: 92, y: 32 },
     pause: { x: 95, y: 8 },
+    aimFire: { x: 50, y: 80 },
     goal: { x: 14, y: 12 },
     gun: { x: 14, y: 33 },
     walk: { x: 55, y: 56 },
@@ -112,6 +118,7 @@ const LAYOUTS: Record<TouchLayout, Record<string, { x: number; y: number }>> = {
     throw: { x: 28, y: 30 },
     crouch: { x: 8, y: 32 },
     pause: { x: 5, y: 8 },
+    aimFire: { x: 50, y: 80 },
     goal: { x: 86, y: 12 },
     gun: { x: 86, y: 33 },
     walk: { x: 45, y: 56 },
@@ -125,10 +132,29 @@ const STICK_ZONE: Record<TouchLayout, { x0: number; x1: number; y0: number }> = 
   oneHandedLeft: { x0: 0, x1: 0.45, y0: 0.72 },
 };
 
+/** Where the fixed movement stick sits for each layout (as viewport fractions). */
+const STICK_ANCHOR: Record<TouchLayout, { x: number; y: number }> = {
+  standard: { x: 0.15, y: 0.77 },
+  oneHandedRight: { x: 0.64, y: 0.86 },
+  oneHandedLeft: { x: 0.36, y: 0.86 },
+};
+
+/**
+ * Swipe acceleration: slow drags stay precise, quick swipes turn further. `speed` is finger speed
+ * in px per ms, `accel` the player's setting (0 = off). Returns the multiplier for this movement.
+ */
+export function swipeGain(speed: number, accel: number): number {
+  const t = Math.min(1, Math.max(0, speed / TUNING.touchLook.accelSpeed));
+  return 1 + Math.max(0, accel) * t;
+}
+
+/** How long Aim+Fire waits after aiming before it fires, so the aim (and any snap) settles first. */
+export const AIM_FIRE_DELAY_MS = 100;
+
 /** Default button positions for a layout (the game is played in landscape only). */
 export const defaultPositions = (layout: TouchLayout) => LAYOUTS[layout];
 
-type Owner = { kind: "stick"; ox: number; oy: number } | { kind: "look"; lx: number; ly: number } | { kind: "button"; def: ButtonDef; lx: number; ly: number };
+type Owner = { kind: "stick"; ox: number; oy: number } | { kind: "look"; lx: number; ly: number; lt: number } | { kind: "button"; def: ButtonDef; lx: number; ly: number; lt: number };
 
 export class TouchControls {
   readonly root: HTMLDivElement;
@@ -215,6 +241,18 @@ export class TouchControls {
       b.style.width = `${w}px`;
       b.style.height = `${h}px`;
     }
+    this.buttons.get("aimFire")!.classList.toggle("tc-hidden", !c.touchAimFire);
+    // A fixed stick is always shown at its spot; a floating one appears under the thumb.
+    const fixed = c.touchStick === "fixed";
+    this.stickBase.classList.toggle("fixed", fixed);
+    if (fixed && !this.stickBase.classList.contains("active")) this.placeFixedStick();
+  }
+
+  private placeFixedStick(): void {
+    const a = STICK_ANCHOR[this.settings().controls.touchLayout];
+    this.stickBase.style.left = `${a.x * window.innerWidth}px`;
+    this.stickBase.style.top = `${a.y * window.innerHeight}px`;
+    this.stickKnob.style.transform = "translate(-50%, -50%)";
   }
 
   /** Shows the selected gun on the left card (tap = swap). Pass null to hide it. */
@@ -288,13 +326,22 @@ export class TouchControls {
     }
     if (target) {
       const def = BUTTONS.find((d) => d.id === target.dataset.id)!;
-      this.owners.set(e.pointerId, { kind: "button", def, lx: e.clientX, ly: e.clientY });
+      const owner: Owner = { kind: "button", def, lx: e.clientX, ly: e.clientY, lt: e.timeStamp };
+      this.owners.set(e.pointerId, owner);
       target.classList.add("tc-pressed");
       if (!this.editing) {
         if (def.action) {
           this.src.held.add(def.action);
           this.src.tapped.add(def.action);
         } else this.setWalk(!this.walk);
+        if (def.id === "aimFire") {
+          // Fire once the aim has settled, if the thumb is still down.
+          setTimeout(() => {
+            if (this.owners.get(e.pointerId) !== owner || this.editing) return;
+            this.src.held.add("fire");
+            this.src.tapped.add("fire");
+          }, AIM_FIRE_DELAY_MS);
+        }
         if (this.settings().controls.vibration) vibrate(8);
       }
       return;
@@ -304,13 +351,22 @@ export class TouchControls {
     const fy = e.clientY / window.innerHeight;
     const stickTaken = [...this.owners.values()].some((o) => o.kind === "stick");
     if (!stickTaken && fx >= z.x0 && fx <= z.x1 && fy >= z.y0 && !this.editing) {
-      this.owners.set(e.pointerId, { kind: "stick", ox: e.clientX, oy: e.clientY });
-      this.stickBase.style.left = `${e.clientX}px`;
-      this.stickBase.style.top = `${e.clientY}px`;
-      this.stickBase.classList.add("active");
-      this.stickKnob.style.transform = "translate(-50%, -50%)";
+      if (this.settings().controls.touchStick === "fixed") {
+        // Fixed stick: its centre never moves, so the thumb can find it without looking, and a
+        // touch away from the centre moves at once in that direction.
+        const a = STICK_ANCHOR[this.settings().controls.touchLayout];
+        this.owners.set(e.pointerId, { kind: "stick", ox: a.x * window.innerWidth, oy: a.y * window.innerHeight });
+        this.stickBase.classList.add("active");
+        this.onMove(e);
+      } else {
+        this.owners.set(e.pointerId, { kind: "stick", ox: e.clientX, oy: e.clientY });
+        this.stickBase.style.left = `${e.clientX}px`;
+        this.stickBase.style.top = `${e.clientY}px`;
+        this.stickBase.classList.add("active");
+        this.stickKnob.style.transform = "translate(-50%, -50%)";
+      }
     } else {
-      this.owners.set(e.pointerId, { kind: "look", lx: e.clientX, ly: e.clientY });
+      this.owners.set(e.pointerId, { kind: "look", lx: e.clientX, ly: e.clientY, lt: e.timeStamp });
     }
   };
 
@@ -337,24 +393,35 @@ export class TouchControls {
       this.src.walk = this.walk;
       this.stickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
     } else if (o.kind === "look") {
-      this.src.look.yaw += (e.clientX - o.lx) * sens;
-      this.src.look.pitch -= (e.clientY - o.ly) * sens;
-      o.lx = e.clientX;
-      o.ly = e.clientY;
+      this.swipe(o, e, sens);
     } else if (o.kind === "button") {
       if (this.editing) {
         const btn = this.buttons.get(o.def.id)!;
         const { w, h } = dims(o.def, this.settings().controls.touchScale);
         btn.style.left = `${e.clientX - w / 2}px`;
         btn.style.top = `${e.clientY - h / 2}px`;
-      } else if (o.def.looks) {
-        this.src.look.yaw += (e.clientX - o.lx) * sens;
-        this.src.look.pitch -= (e.clientY - o.ly) * sens;
+        o.lx = e.clientX;
+        o.ly = e.clientY;
+      } else if (o.def.looks) this.swipe(o, e, sens);
+      else {
+        o.lx = e.clientX;
+        o.ly = e.clientY;
       }
-      o.lx = e.clientX;
-      o.ly = e.clientY;
     }
   };
+
+  /** Turns the camera by a finger's movement, with swipe acceleration. */
+  private swipe(o: { lx: number; ly: number; lt: number }, e: PointerEvent, sens: number): void {
+    const dx = e.clientX - o.lx;
+    const dy = e.clientY - o.ly;
+    const ms = Math.max(1, e.timeStamp - o.lt);
+    const gain = swipeGain(Math.hypot(dx, dy) / ms, this.settings().controls.touchLookAccel ?? 0);
+    this.src.look.yaw += dx * sens * gain;
+    this.src.look.pitch -= dy * sens * gain;
+    o.lx = e.clientX;
+    o.ly = e.clientY;
+    o.lt = e.timeStamp;
+  }
 
   private onUp = (e: PointerEvent) => {
     const o = this.owners.get(e.pointerId);
@@ -363,6 +430,7 @@ export class TouchControls {
     if (o.kind === "stick") {
       this.src.move = { x: 0, y: 0 };
       this.stickBase.classList.remove("active");
+      if (this.settings().controls.touchStick === "fixed") this.placeFixedStick();
       this.src.held.delete("sprint");
     } else if (o.kind === "button") {
       this.buttons.get(o.def.id)!.classList.remove("tc-pressed");
@@ -375,6 +443,10 @@ export class TouchControls {
         const action = o.def.action;
         const stillHeld = [...this.owners.values()].some((x) => x.kind === "button" && x.def.action === action);
         if (!stillHeld) this.src.held.delete(action);
+        if (o.def.id === "aimFire") {
+          const fireHeld = [...this.owners.values()].some((x) => x.kind === "button" && (x.def.action === "fire" || x.def.id === "aimFire"));
+          if (!fireHeld) this.src.held.delete("fire");
+        }
       }
     }
   };
@@ -384,6 +456,7 @@ export class TouchControls {
     this.src.held.clear();
     this.src.move = { x: 0, y: 0 };
     this.stickBase.classList.remove("active");
+    if (this.settings().controls.touchStick === "fixed") this.placeFixedStick();
     this.buttons.forEach((b) => b.classList.remove("tc-pressed"));
   }
 }
